@@ -1,0 +1,206 @@
+/* src/main.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* System Font Stack for Native Appearance */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px; /* Adjust based on platform for consistency */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Default Cursor for Interactive Elements */
+button, a, input, textarea {
+  cursor: default;
+}
+
+/* Platform-Specific Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+/* macOS-Specific Styles */
+@media (prefers-color-scheme: light) {
+  .titlebar {
+    background-color: #f8f8f8;
+    -webkit-app-region: drag;
+    height: 28px;
+  }
+  .titlebar-button {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin: 8px;
+  }
+  .titlebar-button.close {
+    background-color: #ff5f57;
+  }
+  .titlebar-button.minimize {
+    background-color: #ffbd2e;
+  }
+  .titlebar-button.maximize {
+    background-color: #28c840;
+  }
+}
+
+/* Windows-Specific Styles */
+@media (prefers-color-scheme: light) {
+  .titlebar {
+    background-color: #0078d7;
+    color: white;
+    -webkit-app-region: drag;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+  }
+  .titlebar-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+}
+
+/* High Contrast Mode Adjustments */
+@media (forced-colors: active) {
+  body {
+    background-color: Window;
+    color: WindowText;
+  }
+  a {
+    color: LinkText;
+  }
+  button {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 1px solid ButtonText;
+  }
+}
+
+/* Dark Mode Adjustments */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+  }
+  .titlebar {
+    background-color: #2d2d2d;
+  }
+  .titlebar-button.close {
+    background-color: #ff5f57;
+  }
+  .titlebar-button.minimize {
+    background-color: #ffbd2e;
+  }
+  .titlebar-button.maximize {
+    background-color: #28c840;
+  }
+  .drag-handle {
+    background-color: #2d2d2d;
+  }
+}
+
+/* Light Mode Adjustments */
+@media (prefers-color-scheme: light) {
+  .drag-handle {
+    background-color: #f8f8f8;
+  }
+  /* ... rest of light mode styles ... */
+}
+
+/* Input Styles */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+textarea {
+  @apply transition-all duration-150;
+  @apply bg-white dark:bg-gray-700;
+  @apply text-gray-900 dark:text-gray-100;
+  @apply border border-gray-300 dark:border-gray-600;
+  @apply rounded-md shadow-sm;
+  @apply outline-none;
+}
+
+/* Focus States */
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+textarea:focus {
+  @apply ring-2 ring-blue-500/50 dark:ring-blue-400/50;
+  @apply border-blue-500 dark:border-blue-400;
+}
+
+/* Selection Styles */
+::selection {
+  @apply bg-blue-500/20 dark:bg-blue-400/30;
+  @apply text-gray-900 dark:text-white;
+}
+
+/* Placeholder Styles */
+::placeholder {
+  @apply text-gray-400 dark:text-gray-500;
+}
+
+/* Disabled States */
+input:disabled,
+textarea:disabled {
+  @apply bg-gray-100 dark:bg-gray-800;
+  @apply text-gray-500 dark:text-gray-400;
+  @apply cursor-not-allowed;
+  @apply border-gray-200 dark:border-gray-700;
+}
+
+/* Hover States */
+input:not(:disabled):hover,
+textarea:not(:disabled):hover {
+  @apply border-gray-400 dark:border-gray-500;
+  @apply bg-gray-50 dark:bg-gray-600;
+}
+
+/* Form Elements */
+@layer components {
+  .form-input {
+    @apply transition-all duration-150;
+    @apply bg-white dark:bg-gray-700;
+    @apply text-gray-900 dark:text-gray-100;
+    @apply border border-gray-300 dark:border-gray-600;
+    @apply rounded-md shadow-sm;
+    @apply outline-none;
+    @apply px-3 py-2;
+    @apply text-sm;
+  }
+
+  .form-input:focus {
+    @apply ring-2 ring-blue-500/30 dark:ring-blue-400/30;
+    @apply border-blue-500 dark:border-blue-400;
+    @apply bg-white dark:bg-gray-700;
+  }
+
+  .form-input:hover:not(:disabled) {
+    @apply border-gray-400 dark:border-gray-500;
+    @apply bg-gray-50 dark:bg-gray-600;
+  }
+
+  .form-input:disabled {
+    @apply bg-gray-100 dark:bg-gray-800;
+    @apply text-gray-500 dark:text-gray-400;
+    @apply cursor-not-allowed;
+    @apply border-gray-200 dark:border-gray-700;
+  }
+
+  /* Selection styles */
+  .form-input::selection {
+    @apply bg-blue-500/20 dark:bg-blue-400/30;
+    @apply text-gray-900 dark:text-white;
+  }
+
+  /* Placeholder styles */
+  .form-input::placeholder {
+    @apply text-gray-400 dark:text-gray-500;
+  }
+}
