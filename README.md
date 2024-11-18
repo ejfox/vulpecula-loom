@@ -1,5 +1,8 @@
 # Vulpecula Loom - AI Chat with Obsidian Integration
 
+<img width="1428" alt="Screenshot 2024-11-18 at 12 41 15 AM" src="https://github.com/user-attachments/assets/d2d0cec6-872f-4384-82a1-af21b8672ee6">
+
+
 Vulpecula Loom is a desktop application that combines the power of modern AI language models with seamless Obsidian vault integration. Built with Electron, Vue 3, and TypeScript, it offers a polished and efficient interface for AI-assisted writing and research.
 
 ## Features
