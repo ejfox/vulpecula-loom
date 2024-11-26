@@ -87,6 +87,19 @@
                 'bg-blue-200 dark:bg-blue-800 prose-blue dark:prose-blue' :
                 'bg-gray-200 dark:bg-gray-700'" v-html="renderMarkdown(message.content)">
               </div>
+
+              <!-- Note Preview -->
+              <div v-if="message.preview" class="p-2 sm:p-3 rounded-lg bg-gray-100 dark:bg-gray-800 max-w-none">
+                <div class="text-sm text-gray-700 dark:text-gray-300">
+                  {{ message.preview }}
+                </div>
+                <button @click="togglePreview(message)" class="text-blue-500 dark:text-blue-400 hover:underline">
+                  {{ message.showFullPreview ? 'Read less' : 'Read more' }}
+                </button>
+                <div v-if="message.showFullPreview" class="text-sm text-gray-700 dark:text-gray-300 mt-2">
+                  {{ message.fullContent }}
+                </div>
+              </div>
             </div>
           </TransitionGroup>
         </section>
@@ -406,6 +419,10 @@ function insertObsidianLink(file: ObsidianFile) {
   showMentionPopup.value = false
   mentionStartIndex.value = -1
   searchQuery.value = ''
+}
+
+function togglePreview(message: any) {
+  message.showFullPreview = !message.showFullPreview
 }
 </script>
 

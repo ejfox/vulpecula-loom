@@ -74,4 +74,4 @@ export function useObsidianFiles() {
     hasVault,
     searchFiles
   }
-} 
+}
