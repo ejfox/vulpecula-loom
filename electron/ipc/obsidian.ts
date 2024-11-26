@@ -44,6 +44,7 @@ async function scanVaultFiles(vaultPath: string): Promise<ObsidianFile[]> {
               .map(line => line.trim())
               .find(line => line.length > 0) || ''
             
+            // Ensure all values are strings
             files.push({
               title: String(data.title || entry.name.replace('.md', '')),
               path: String(path.relative(vaultPath, fullPath)),
@@ -77,6 +78,14 @@ async function searchObsidianFiles(options: SearchOptions): Promise<ObsidianFile
     if (!fileCache.has(vaultPath)) {
       const files = await scanVaultFiles(vaultPath)
       fileCache.set(vaultPath, files)
+      
+      // Set up file watcher to invalidate cache when files change
+      const watcher = require('chokidar').watch(vaultPath, {
+        ignored: /(^|[\/\\])\../, // Ignore hidden files
+        persistent: true
+      })
+      
+      watcher.on('change', () => fileCache.delete(vaultPath))
     }
     
     const files = fileCache.get(vaultPath) || []
@@ -88,13 +97,21 @@ async function searchObsidianFiles(options: SearchOptions): Promise<ObsidianFile
         return searchTerms.every(term => searchText.includes(term))
       })
       .sort((a, b) => {
+        // Prioritize matches in title
         const aInTitle = a.title.toLowerCase().includes(searchTerm.toLowerCase())
         const bInTitle = b.title.toLowerCase().includes(searchTerm.toLowerCase())
         if (aInTitle && !bInTitle) return -1
         if (!aInTitle && bInTitle) return 1
         return 0
       })
-      .slice(0, 10)
+      .slice(0, 10) // Limit results
+      .map(file => ({
+        // Ensure all values are serializable
+        title: String(file.title),
+        path: String(file.path),
+        slug: String(file.slug),
+        preview: file.preview ? String(file.preview) : undefined
+      }))
   } catch (err) {
     console.error('Error searching Obsidian files:', err)
     return []
