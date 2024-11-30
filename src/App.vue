@@ -1,30 +1,28 @@
 <template>
-  <div
-    class="h-screen flex flex-col overflow-hidden w-full min-w-[420px] bg-white dark:bg-gray-900 transition-opacity duration-300"
-    :class="{ 'opacity-90': !isWindowFocused }">
-    <!-- Window Drag Handle with Gradient -->
-    <div :class="[
-      'h-10 drag-handle transition-all duration-300',
-      'bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800',
-      'dark:from-black dark:via-gray-900 dark:to-black',
-      isWindowFocused ? 'opacity-100' : 'opacity-75'
-    ]">
+  <div class="h-screen flex flex-col bg-gray-900">
+    <!-- Title Bar -->
+    <div
+      class="h-10 drag-handle bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 dark:from-black dark:via-gray-900 dark:to-black">
       <span class="text-xs text-white ml-20">{{ modelName }}</span>
       <span class="text-xs text-white/80">狐狸座</span>
     </div>
 
-    <div class="flex flex-1 overflow-hidden p-1.5">
-      <ChatSidebar :chat-history="chatHistory" :current-chat-id="currentChatId" :current-model="currentModel"
-        :MODEL_CONFIGS="MODEL_CONFIGS" @clear-chat="clearChat" @load-chat="loadChat" @set-model="setModel" />
+    <!-- Main Layout with Phi Ratio -->
+    <div class="flex-1 flex min-h-0 p-1.5 gap-1.5">
+      <!-- Sidebar - smaller section -->
+      <div class="w-[38.2%] max-w-sm bg-gray-900 rounded-lg overflow-hidden">
+        <ChatSidebar class="h-full" :chat-history="chatHistory" :current-chat-id="currentChatId"
+          :current-model="currentModel" :MODEL_CONFIGS="MODEL_CONFIGS" @clear-chat="clearChat" @load-chat="loadChat"
+          @set-model="setModel" />
+      </div>
 
-      <!-- Main Content Area -->
-      <main class="flex-1 flex flex-col bg-white dark:bg-gray-900 ml-1.5 rounded-lg min-w-0">
-        <!-- Add this conversation stats bar -->
+      <!-- Main Chat Area - larger section -->
+      <main class="flex-1 flex flex-col min-h-0 bg-gray-900 rounded-lg overflow-hidden">
         <ChatMetadata :stats="chatStats" @export="exportChat" />
 
         <!-- API Key Warning -->
         <div v-if="!hasValidKey"
-          class="p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100 flex items-center justify-between">
+          class="flex-shrink-0 p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100">
           <div class="flex items-center flex-1">
             <span>Please set your OpenRouter API key:</span>
             <form @submit.prevent="saveApiKey" class="flex items-center ml-2 flex-1">
@@ -40,79 +38,78 @@
         </div>
 
         <!-- Error Message -->
-        <div v-if="error" class="p-4 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100">
+        <div v-if="error" class="flex-shrink-0 p-4 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100">
           {{ error }}
         </div>
 
-        <!-- Chat History -->
-        <section ref="chatContainer" class="flex-1 p-3 sm:p-4 space-y-3 overflow-y-auto scroll-smooth">
-          <TransitionGroup name="message" tag="div" class="space-y-3">
-            <div v-for="message in messages" :key="`${message.id}-${message.timestamp.getTime()}`" :class="[
-              'max-w-[85%] transition-all duration-300',
-              message.role === 'user' ? 'ml-auto' : ''
-            ]">
-              <!-- Enhanced Message Metadata -->
-              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                <div class="flex items-center space-x-2">
-                  <span>{{ message.role === 'user' ? 'You' : 'AI' }}</span>
-                  <span>•</span>
-                  <span>{{ message.model || modelName }}</span>
-                  <span v-if="message.tokens">
+        <!-- Chat Messages - Scrollable -->
+        <section ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto">
+          <div class="p-4 space-y-3">
+            <TransitionGroup name="message" tag="div" class="space-y-3">
+              <div v-for="message in messages" :key="`${message.id}-${message.timestamp.getTime()}`" :class="[
+                'max-w-[85%] transition-all duration-300',
+                message.role === 'user' ? 'ml-auto' : ''
+              ]">
+                <!-- Message Metadata -->
+                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <div class="flex items-center space-x-2">
+                    <span>{{ message.role === 'user' ? 'You' : 'AI' }}</span>
                     <span>•</span>
-                    <span>{{ message.tokens.total }} tokens</span>
-                    <span v-if="message.cost" class="ml-1 text-blue-600 dark:text-blue-400">
-                      (${{ message.cost.toFixed(4) }})
+                    <span>{{ message.model || modelName }}</span>
+                    <span v-if="message.tokens">
+                      <span>•</span>
+                      <span>{{ message.tokens.total }} tokens</span>
+                      <span v-if="message.cost" class="ml-1 text-blue-600 dark:text-blue-400">
+                        (${{ message.cost.toFixed(4) }})
+                      </span>
                     </span>
-                  </span>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <span>{{ new Intl.DateTimeFormat('en-US', {
+                      hour: 'numeric',
+                      minute: 'numeric',
+                      second: 'numeric',
+                      hour12: true
+                    }).format(message.timestamp) }}</span>
+                    <button @click="copyMessage(message.content)"
+                      class="opacity-0 group-hover:opacity-100 transition-opacity" title="Copy message">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-                <div class="flex items-center space-x-2">
-                  <span>{{ new Intl.DateTimeFormat('en-US', {
-                    hour: 'numeric',
-                    minute: 'numeric',
-                    second: 'numeric',
-                    hour12: true
-                  }).format(message.timestamp) }}</span>
-                  <button @click="copyMessage(message.content)"
-                    class="opacity-0 group-hover:opacity-100 transition-opacity" title="Copy message">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
 
-              <!-- Message Content -->
-              <div class="p-2 sm:p-3 rounded-lg prose dark:prose-invert max-w-none" :class="message.role === 'user' ?
-                'bg-blue-200 dark:bg-blue-800 prose-blue dark:prose-blue' :
-                'bg-gray-200 dark:bg-gray-700'" v-html="renderMarkdown(message.content)">
+                <!-- Message Content -->
+                <div class="p-2 sm:p-3 rounded-lg prose dark:prose-invert max-w-none" :class="message.role === 'user' ?
+                  'bg-blue-200 dark:bg-blue-800 prose-blue dark:prose-blue' :
+                  'bg-gray-200 dark:bg-gray-700'" v-html="renderMarkdown(message.content)">
+                </div>
               </div>
-            </div>
-          </TransitionGroup>
+            </TransitionGroup>
+          </div>
         </section>
 
-        <!-- Message Input -->
-        <footer class="p-2 sm:p-3 bg-gray-100 dark:bg-gray-800 rounded-b-lg text-xs">
+        <!-- Message Input - Fixed at bottom -->
+        <footer class="flex-shrink-0 p-3 bg-gray-800">
           <form @submit.prevent="handleSubmit" class="flex items-center gap-2">
             <div class="relative flex-1">
               <input v-model="newMessage" type="text" placeholder="Type your message... (Use @ to link Obsidian files)"
-                :disabled="isLoading || !hasValidKey" @keydown="handleKeydown" @input="handleInput" class="w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                :disabled="isLoading || !hasValidKey" @keydown="handleKeydown" @input="handleInput" class="w-full p-2 rounded-md border border-gray-700 
+                       bg-gray-900 text-gray-100
                        focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       text-sm sm:text-base min-w-0
-                       disabled:bg-gray-100 dark:disabled:bg-gray-800
-                       disabled:text-gray-500 dark:disabled:text-gray-400" />
+                       text-sm min-w-0" />
 
-              <!-- Obsidian Mention Popup -->
               <ObsidianMentionPopup :show="showMentionPopup" :results="obsidianSearchResults"
                 :is-searching="isSearchingFiles" :has-vault="hasObsidianVault" @select="insertObsidianLink" />
             </div>
 
-            <button type="submit" :disabled="isLoading || !hasValidKey" class="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white 
-                           hover:bg-blue-600 dark:hover:bg-blue-700 
-                           disabled:bg-gray-400 dark:disabled:bg-gray-600 
-                           rounded-md whitespace-nowrap text-sm sm:text-base
-                           transition-colors">
+            <button type="submit" :disabled="isLoading || !hasValidKey" class="px-4 py-2 bg-blue-500 text-white 
+                     hover:bg-blue-600
+                     disabled:bg-gray-600 
+                     rounded-md whitespace-nowrap text-sm
+                     transition-colors">
               {{ isLoading ? 'Sending...' : 'Send' }}
             </button>
           </form>
@@ -410,6 +407,14 @@ function insertObsidianLink(file: ObsidianFile) {
 </script>
 
 <style>
+:root {
+  font-size: 14px;
+}
+
+html {
+  font-size: 14px;
+}
+
 /* Optional - Subtle overflow scrolling behavior */
 ::-webkit-scrollbar {
   width: 8px;

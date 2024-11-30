@@ -1,3 +1,80 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import { useStore } from '../lib/store'
+import { MODEL_CONFIGS } from '../composables/useOpenRouter'
+
+const props = defineProps<{
+  isOpen: boolean
+  apiKey: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:isOpen', value: boolean): void
+  (e: 'update:apiKey', value: string): void
+  (e: 'nukeData'): void
+}>()
+
+const store = useStore()
+const defaultModel = ref('anthropic/claude-3.5-sonnet:beta')
+const theme = ref(store.get('theme') || 'system')
+// Initialize with a string value, not a Promise
+const vaultPath = ref<string>(store.get('obsidian-vault-path') || '')
+const showApiKey = ref(false)
+
+const selectVaultFolder = async () => {
+  try {
+    const result = await window.electron.ipcRenderer.invoke('select-folder')
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      // Make sure we're setting a string value
+      const selectedPath = result.filePaths[0]
+      vaultPath.value = selectedPath
+      // Update the store with the string value
+      store.set('obsidian-vault-path', selectedPath)
+    }
+  } catch (err) {
+    console.error('Failed to select vault folder:', err)
+  }
+}
+
+function close() {
+  emit('update:isOpen', false)
+  showApiKey.value = false  // Reset API key visibility when closing
+}
+
+async function confirmNuke() {
+  const confirmed = await window.electron.ipcRenderer.invoke('show-confirm-dialog', {
+    type: 'warning',
+    title: 'Nuke All Data',
+    message: 'Are you absolutely sure?',
+    detail: 'This will permanently delete all your chat history, settings, and stored data. This action cannot be undone.',
+    buttons: ['Cancel', 'Yes, Delete Everything'],
+    defaultId: 0,
+    cancelId: 0,
+  })
+
+  if (confirmed.response === 1) {
+    emit('nukeData')
+    close()
+  }
+}
+
+function clearVaultPath() {
+  vaultPath.value = ''
+  store.set('obsidian-vault-path', '')
+}
+
+// Watch for theme changes
+watch(theme, (newTheme) => {
+  store.set('theme', newTheme)
+})
+
+// Watch for changes
+watch(defaultModel, (newValue) => {
+  store.set('ai-chat-model', newValue)
+})
+</script>
+
 <template>
   <div v-if="isOpen" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
@@ -149,97 +226,6 @@
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useStore } from '../lib/store'
-import { MODEL_CONFIGS } from '../composables/useOpenRouter'
-
-const props = defineProps<{
-  isOpen: boolean
-  apiKey: string
-}>()
-
-const emit = defineEmits<{
-  (e: 'update:isOpen', value: boolean): void
-  (e: 'update:apiKey', value: string): void
-  (e: 'nukeData'): void
-}>()
-
-const store = useStore()
-const defaultModel = ref(store.get('ai-chat-model'))
-const theme = ref(store.get('theme'))
-const vaultPath = ref(store.get('obsidian-vault-path'))
-const showApiKey = ref(false)
-
-async function selectVaultFolder() {
-  try {
-    const result = await window.electron.ipcRenderer.invoke('select-folder')
-
-    if (!result.canceled && result.filePaths.length > 0) {
-      vaultPath.value = result.filePaths[0]
-    }
-  } catch (err) {
-    console.error('Failed to select vault folder:', err)
-  }
-}
-
-function close() {
-  emit('update:isOpen', false)
-  showApiKey.value = false  // Reset API key visibility when closing
-}
-
-async function confirmNuke() {
-  const confirmed = await window.electron.ipcRenderer.invoke('show-confirm-dialog', {
-    type: 'warning',
-    title: 'Nuke All Data',
-    message: 'Are you absolutely sure?',
-    detail: 'This will permanently delete all your chat history, settings, and stored data. This action cannot be undone.',
-    buttons: ['Cancel', 'Yes, Delete Everything'],
-    defaultId: 0,
-    cancelId: 0,
-  })
-
-  if (confirmed.response === 1) {
-    emit('nukeData')
-    close()
-  }
-}
-
-function clearVaultPath() {
-  vaultPath.value = ''
-}
-
-// Watch for theme changes
-watch(theme, (newTheme) => {
-  if (newTheme === 'dark') {
-    document.documentElement.classList.add('dark')
-  } else if (newTheme === 'light') {
-    document.documentElement.classList.remove('dark')
-  } else {
-    // System preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }
-})
-
-// Watch for changes
-watch(defaultModel, (newValue) => {
-  store.set('ai-chat-model', newValue)
-})
-
-watch(theme, (newValue) => {
-  store.set('theme', newValue)
-  // ... theme handling ...
-})
-
-watch(vaultPath, (newValue) => {
-  store.set('obsidian-vault-path', newValue)
-})
-</script>
 
 <style scoped>
 /* Custom scrollbar for the settings content */

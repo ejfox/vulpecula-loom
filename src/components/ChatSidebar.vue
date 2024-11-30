@@ -1,6 +1,5 @@
 <template>
-  <aside class="w-[200px] min-w-[160px] max-w-[240px] flex flex-col rounded-lg overflow-hidden
-                sm:w-[180px] md:w-[200px] text-sm">
+  <aside class="flex flex-col h-full overflow-hidden text-sm">
     <!-- Header with App Name - Fixed -->
     <div class="px-4 py-3 bg-gray-800 dark:bg-gray-900 text-white flex-shrink-0">
       <h1 class="font-medium">狐狸座 AI Chat</h1>
@@ -8,9 +7,9 @@
     </div>
 
     <!-- Scrollable Content Area -->
-    <div class="flex-1 bg-gray-100 dark:bg-gray-800 overflow-hidden flex flex-col">
+    <div class="flex-1 bg-gray-100 dark:bg-gray-800 overflow-y-auto">
       <!-- Scrollable Container -->
-      <div class="flex-1 overflow-y-auto p-3">
+      <div class="p-3">
         <!-- New Chat Button - Fixed at Top -->
         <div class="sticky top-0 bg-gray-100 dark:bg-gray-800 pb-3">
           <button @click="clearChat" class="w-full px-3 py-2 flex items-center gap-2 
