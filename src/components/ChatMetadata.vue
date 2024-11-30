@@ -72,7 +72,7 @@
             <div>
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Cost</div>
               <div class="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                ${{ stats.cost?.toFixed(4) || '0.0000' }}
+                {{ stats.cost ? formatModelCost('', stats.cost) : '$0.0000' }}
               </div>
             </div>
           </div>
@@ -111,4 +111,8 @@ defineProps<{
 defineEmits<{
   export: []
 }>()
+
+import { useOpenRouter } from '../composables/useOpenRouter'
+
+const { formatModelCost } = useOpenRouter()
 </script>

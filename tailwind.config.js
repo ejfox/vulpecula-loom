@@ -16,6 +16,23 @@ module.exports = {
         "5xl": ["2.25rem", { lineHeight: "2.75rem" }], // 36px
         "6xl": ["3rem", { lineHeight: "3rem" }], // 48px
       },
+      keyframes: {
+        "gradient-x": {
+          "0%, 100%": {
+            "background-position": "200% 50%",
+          },
+          "50%": {
+            "background-position": "0% 50%",
+          },
+        },
+      },
+      animation: {
+        "gradient-slow": "gradient-x 15s ease infinite",
+        "gradient-slower": "gradient-x 20s ease infinite",
+      },
+      backgroundSize: {
+        "200%": "200% 100%",
+      },
     },
   },
   plugins: [require("tailwind-phi")],

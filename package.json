@@ -45,7 +45,9 @@
     "@vueuse/shared": "^11.3.0",
     "dompurify": "^3.2.1",
     "electron-store": "^10.0.0",
+    "lucide-vue-next": "^0.462.0",
     "marked": "^15.0.2",
+    "radix-vue": "^1.9.10",
     "tailwind-phi": "^1.0.1"
   },
   "build": {
@@ -57,7 +59,9 @@
       {
         "from": "src/electron",
         "to": "electron",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }
