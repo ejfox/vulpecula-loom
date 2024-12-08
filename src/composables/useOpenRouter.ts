@@ -1,7 +1,7 @@
 import { ref, computed, watch } from "vue";
 import { useStore } from "../lib/store";
 import type { Ref, ComputedRef } from "vue";
-import type { OpenRouterModel } from "../types";
+import type { OpenRouterModel, ChatMessage, ChatHistory } from "../types";
 import { useSupabase } from "./useSupabase";
 
 export interface UseOpenRouterReturn {
@@ -329,7 +329,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
       if (error) throw error;
 
       // Update state with basic message format
-      messages.value = chat.messages.map((m) => ({
+      messages.value = chat.messages.map((m: ChatMessage) => ({
         ...m,
         timestamp: m.timestamp || new Date().toISOString(),
       }));

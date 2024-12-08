@@ -2,42 +2,12 @@ import { computed } from "vue";
 import { createClient } from "@supabase/supabase-js";
 import type { Ref, ComputedRef } from "vue";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ChatHistory } from "../types";
+import type { ChatHistory, ChatMessage, ChatMetadata } from "../types";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_KEY
 );
-
-export interface ChatHistory {
-  id: string;
-  model: string;
-  messages: Array<{
-    role: "user" | "assistant" | "system";
-    content: string;
-    timestamp: string;
-    tokens?: {
-      prompt?: number;
-      completion?: number;
-      total?: number;
-    };
-    cost?: number;
-    model?: string;
-  }>;
-  created_at: string;
-  updated_at: string;
-  title?: string;
-  metadata?: {
-    lastModel?: string;
-    lastUpdated?: string;
-    stats?: {
-      promptTokens: number;
-      completionTokens: number;
-      cost: number;
-    };
-  };
-  thread?: string;
-}
 
 export interface UseSupabaseReturn {
   supabase: SupabaseClient;
@@ -45,13 +15,13 @@ export interface UseSupabaseReturn {
   hasValidSupabaseConfig: ComputedRef<boolean>;
   saveChatHistory: (
     history: Omit<ChatHistory, "id" | "created_at" | "updated_at">
-  ) => Promise<void>;
+  ) => Promise<ChatHistory>;
   updateChatHistory: (
     id: string,
-    messages: any[],
-    metadata?: any
-  ) => Promise<void>;
-  loadChatHistory: (id: string) => Promise<ChatHistory | null>;
+    messages: ChatMessage[],
+    metadata?: ChatMetadata
+  ) => Promise<ChatHistory>;
+  loadChatHistory: (id: string) => Promise<ChatHistory>;
   loadChatHistories: () => Promise<ChatHistory[]>;
   deleteChat: (id: string) => Promise<void>;
   deleteAllChats: () => Promise<void>;

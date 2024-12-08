@@ -33,6 +33,9 @@ module.exports = {
       backgroundSize: {
         "200%": "200% 100%",
       },
+      spacing: {
+        0.5: "0.125rem",
+      },
     },
   },
   plugins: [require("tailwind-phi")],

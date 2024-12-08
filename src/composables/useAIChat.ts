@@ -1,8 +1,13 @@
 import { ref, computed } from "vue";
 import { useLocalStorage } from "@vueuse/core";
-import { useOpenRouter, type OpenRouterModel } from "./useOpenRouter";
+import { useOpenRouter } from "./useOpenRouter";
+import type {
+  OpenRouterModel,
+  ChatMessage,
+  ChatHistory,
+  ChatMetadata,
+} from "../types";
 import { useSupabase } from "./useSupabase";
-import type { ChatHistory } from "./useSupabase";
 
 export interface AIMessage {
   id: string;
@@ -40,6 +45,16 @@ interface StoredMessage {
     total?: number;
   };
   cost?: number;
+}
+
+interface TokenCallback {
+  onToken: (token: string) => void;
+  onUsage: (usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  }) => void;
+  onError: (err: Error) => void;
 }
 
 export function useAIChat() {
@@ -83,6 +98,7 @@ export function useAIChat() {
       role: msg.role,
       content: msg.content,
       timestamp: msg.timestamp.toISOString(),
+      includedFiles: msg.includedFiles,
     }))
   );
 
@@ -167,7 +183,7 @@ export function useAIChat() {
             ...msg,
             content: `${msg.content}\n\nIncluded files:\n${msg.includedFiles
               .map(
-                (file) =>
+                (file: { title: string; path: string; content: string }) =>
                   `---\nTitle: ${file.title}\nPath: ${file.path}\nContent:\n${file.content}\n---`
               )
               .join("\n\n")}`,
@@ -185,11 +201,15 @@ export function useAIChat() {
           max_tokens: 1000,
         },
         {
-          onToken: (token) => {
+          onToken: (token: string) => {
             assistantMessage.content += token;
             messages.value = [...messages.value];
           },
-          onUsage: (usage) => {
+          onUsage: (usage: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+          }) => {
             // Update both user and assistant message tokens
             userMessage.tokens = {
               prompt: usage.prompt_tokens,
@@ -227,7 +247,7 @@ export function useAIChat() {
           onComplete: () => {
             saveToSupabase(assistantMessage);
           },
-          onError: (err) => {
+          onError: (err: Error) => {
             error.value = "Error during streaming response";
             console.error("Streaming error:", err);
           },
@@ -265,9 +285,10 @@ export function useAIChat() {
         cost: msg.cost, // Include cost data
       }));
 
-      const metadata = {
+      const metadata: ChatMetadata = {
         lastModel: currentModel.value,
         lastUpdated: new Date().toISOString(),
+        title: messages.value[0]?.content.slice(0, 50) + "...",
         stats: {
           promptTokens: chatStats.value.promptTokens,
           completionTokens: chatStats.value.completionTokens,
@@ -292,8 +313,10 @@ export function useAIChat() {
         const savedChat = await saveChatHistory({
           model: currentModel.value,
           messages: formattedMessagesWithMetadata,
-          title: messages.value[0].content.slice(0, 50) + "...",
-          metadata,
+          metadata: {
+            ...metadata,
+            title: messages.value[0].content.slice(0, 50) + "...",
+          },
         });
         currentChatId.value = savedChat.id;
         console.log("New chat created with ID:", savedChat.id);
