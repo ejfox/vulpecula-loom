@@ -45,7 +45,9 @@
     "marked": "^15.0.2",
     "path-browserify": "^1.0.1",
     "radix-vue": "^1.9.10",
-    "tailwind-phi": "^1.0.1"
+    "tailwind-phi": "^1.0.1",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
   },
   "build": {
     "files": [
