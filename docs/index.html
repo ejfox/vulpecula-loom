@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vulpecula Chat - A Second Brain for Your AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            vulpecula: {
+              300: '#7cc5fb',
+              400: '#36a7f6',
+              500: '#0c89e8',
+              600: '#006bc6',
+              700: '#0055a1',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+
+    .terminal {
+      background: rgba(0, 0, 0, 0.8);
+      border-radius: 8px;
+      box-shadow: 0 4px 32px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(12px);
+    }
+  </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100">
+  <div class="min-h-screen flex flex-col">
+    <nav class="p-6">
+      <div class="max-w-7xl mx-auto flex justify-between items-center">
+        <div class="text-2xl font-bold text-vulpecula-300">Vulpecula Chat</div>
+        <a href="https://github.com/room302studio/vulpecula-loom"
+          class="px-4 py-2 bg-vulpecula-700 hover:bg-vulpecula-600 rounded-lg transition-colors">
+          GitHub
+        </a>
+      </div>
+    </nav>
+
+    <main class="flex-1">
+      <div class="max-w-7xl mx-auto px-6 py-24">
+        <h1
+          class="text-6xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-vulpecula-300 to-vulpecula-500">
+          A Second Brain for Your AI
+        </h1>
+        <p class="text-xl text-gray-400 mb-12 max-w-2xl">
+          Not just another AI interface. A power tool for those who understand
+          that every conversation is valuable data, every context matters, and
+          interfaces should enhance - not limit - your capabilities.
+        </p>
+
+        <!-- Terminal Demo -->
+        <div class="terminal p-6 mb-12">
+          <div class="flex items-center mb-4">
+            <div class="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+            <div class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+          </div>
+          <div class="font-mono text-sm space-y-2">
+            <div>
+              <span class="text-green-400">$</span>
+              <span class="text-vulpecula-300">@file:roadmap.md</span>
+              <span class="text-gray-400"># Pull in project context</span>
+            </div>
+            <div>
+              <span class="text-green-400">$</span>
+              <span class="text-vulpecula-300">:context +tool:API 0.8</span>
+              <span class="text-gray-400"># Boost API knowledge</span>
+            </div>
+            <div>
+              <span class="text-green-400">$</span>
+              <span class="text-vulpecula-300">:model claude</span>
+              <span class="text-gray-400"># Switch models seamlessly</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Features Grid -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-24">
+          <div class="p-6 rounded-lg bg-gray-800">
+            <h3 class="text-xl font-semibold mb-4 text-vulpecula-300">Markdown-Based Memory</h3>
+            <p class="text-gray-400">Every conversation is stored in plain-text markdown. Your chat history is yours—and
+              it's actually useful.</p>
+          </div>
+          <div class="p-6 rounded-lg bg-gray-800">
+            <h3 class="text-xl font-semibold mb-4 text-vulpecula-300">@Everything Integration</h3>
+            <p class="text-gray-400">Quickly reference files, notes, and context with @ commands. Pull in anything,
+              anytime.</p>
+          </div>
+          <div class="p-6 rounded-lg bg-gray-800">
+            <h3 class="text-xl font-semibold mb-4 text-vulpecula-300">Dynamic Context Control</h3>
+            <p class="text-gray-400">Debug what your AI knows, adjust weights on the fly, and save successful recipes.
+            </p>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="text-center">
+          <a href="https://github.com/room302studio/vulpecula-loom"
+            class="inline-block px-8 py-4 bg-vulpecula-500 hover:bg-vulpecula-400 rounded-lg text-lg font-semibold transition-colors">
+            Get Early Access
+          </a>
+        </div>
+      </div>
+    </main>
+
+    <footer class="py-12 text-center text-gray-500">
+      Built by <a href="https://github.com/room302studio" class="text-vulpecula-300 hover:text-vulpecula-200">Room 302
+        Studio</a>
+      for those who take AI seriously.
+    </footer>
+  </div>
+</body>
+
+</html>
