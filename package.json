@@ -1,17 +1,19 @@
 {
   "name": "electron-vue-vite",
   "version": "28.1.0",
-  "main": "dist-electron/main/index.js",
-  "description": "Really simple Electron + Vue + Vite boilerplate.",
-  "author": "草鞋没号 <308487730@qq.com>",
+  "main": "./dist-electron/main/index.js",
+  "description": "A Second Brain for Your AI",
+  "author": "EJ Fox",
   "license": "MIT",
   "private": true,
   "keywords": [
     "electron",
-    "rollup",
     "vite",
     "vue3",
-    "vue"
+    "vue",
+    "ai",
+    "claude",
+    "obsidian"
   ],
   "debug": {
     "env": {
@@ -48,8 +50,13 @@
   "build": {
     "files": [
       "dist/**/*",
+      "dist-electron/**/*",
       "package.json"
     ],
+    "directories": {
+      "output": "release/${version}"
+    },
+    "asar": true,
     "extraResources": [
       {
         "from": "src/electron",
