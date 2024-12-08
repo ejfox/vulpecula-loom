@@ -12,6 +12,7 @@ interface StoreSchema {
   showBadgeCount: boolean;
   showProgressBar: boolean;
   enabledModelIds: string[];
+  recentModelIds: string[];
 }
 
 export function useStore() {

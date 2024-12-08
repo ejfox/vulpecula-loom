@@ -104,9 +104,15 @@ interface ChatStats {
   cost?: number
 }
 
-defineProps<{
+const props = withDefaults(defineProps<{
   stats: ChatStats
-}>()
+}>(), {
+  stats: () => ({
+    promptTokens: 0,
+    completionTokens: 0,
+    cost: 0
+  })
+})
 
 defineEmits<{
   export: []

@@ -16,6 +16,11 @@ export interface AIMessage {
     total?: number;
   };
   cost?: number;
+  includedFiles?: Array<{
+    title: string;
+    path: string;
+    content: string;
+  }>;
 }
 
 interface TokenUsage {
@@ -114,7 +119,10 @@ export function useAIChat() {
     chatStats.value = stats;
   }
 
-  async function sendMessage(content: string) {
+  async function sendMessage(
+    content: string,
+    includedFiles?: Array<{ title: string; path: string; content: string }>
+  ) {
     if (!content.trim() || isLoading.value) return;
     error.value = null;
 
@@ -129,10 +137,11 @@ export function useAIChat() {
         timestamp: new Date(),
         model: currentModel.value,
         tokens: {
-          prompt: 0, // Will be updated when we get the response
+          prompt: 0,
           completion: 0,
           total: 0,
         },
+        includedFiles,
       };
       messages.value.push(userMessage);
 
@@ -151,9 +160,25 @@ export function useAIChat() {
       };
       messages.value.push(assistantMessage);
 
+      // Prepare messages array with included file content
+      const messagesForAPI = formattedMessages.value.map((msg) => {
+        if (msg.role === "user" && msg.includedFiles?.length) {
+          return {
+            ...msg,
+            content: `${msg.content}\n\nIncluded files:\n${msg.includedFiles
+              .map(
+                (file) =>
+                  `---\nTitle: ${file.title}\nPath: ${file.path}\nContent:\n${file.content}\n---`
+              )
+              .join("\n\n")}`,
+          };
+        }
+        return msg;
+      });
+
       // Get AI response with streaming
       const response = await chat(
-        formattedMessages.value,
+        messagesForAPI,
         {
           model: currentModel.value,
           temperature: temperature.value,

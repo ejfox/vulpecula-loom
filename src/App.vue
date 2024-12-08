@@ -72,7 +72,7 @@
             <section ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <div class="p-4 space-y-3">
                 <TransitionGroup name="message" tag="div" class="space-y-3">
-                  <div v-for="message in messages" :key="`${message.id}-${message.timestamp.getTime()}`" :class="[
+                  <div v-for="message in messages" :key="`${message.id}-${message.timestamp}`" :class="[
                     'max-w-[85%] transition-all duration-300 group',
                     message.role === 'user' ? 'ml-auto' : ''
                   ]">
@@ -96,7 +96,7 @@
                           minute: 'numeric',
                           second: 'numeric',
                           hour12: true
-                        }).format(message.timestamp) }}</span>
+                        }).format(new Date(message.timestamp)) }}</span>
 
                         <!-- Message Actions Menu -->
                         <div class="relative message-menu">
@@ -218,6 +218,25 @@
 
                   <ObsidianMentionPopup :show="showMentionPopup" :results="obsidianSearchResults"
                     :is-searching="isSearchingFiles" :has-vault="hasObsidianVault" @select="insertObsidianLink" />
+
+                  <!-- File Inclusion Indicator -->
+                  <div v-if="messageIncludedFiles.length > 0"
+                    class="absolute -bottom-6 left-0 right-0 flex flex-wrap gap-1 text-xs">
+                    <div v-for="file in messageIncludedFiles" :key="file.path"
+                      class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>{{ file.title }}</span>
+                      <button @click="removeIncludedFile(file.path)" class="hover:text-purple-100 transition-colors">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <button type="submit" :disabled="isLoading || !hasValidKey" class="px-4 py-2 bg-blue-500 text-white 
@@ -264,15 +283,14 @@
       <Transition enter-active-class="transition duration-100 ease-out" enter-from-class="transform scale-95 opacity-0"
         enter-to-class="transform scale-100 opacity-100" leave-active-class="transition duration-75 ease-in"
         leave-from-class="transform scale-100 opacity-100" leave-to-class="transform scale-95 opacity-0">
-        <div v-if="activeCodeMenu" class="fixed code-menu z-50" :style="{
-          top: `${activeCodeMenu ? document.getElementById(activeCodeMenu)?.getBoundingClientRect().top + window.scrollY + 40 : 0}px`,
-          right: `${activeCodeMenu ? document.getElementById(activeCodeMenu)?.getBoundingClientRect().right - 100 : 0}px`
-        }">
+        <div v-if="activeCodeMenu" class="fixed code-menu z-50" :style="codeMenuPosition">
           <div class="w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5">
             <div class="py-1">
-              <button @click="saveCodeToFile(document.getElementById(activeCodeMenu)?.textContent || '',
-                document.getElementById(activeCodeMenu)?.className.replace('language-', '') || '')" class="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 
-                       hover:bg-gray-100 dark:hover:bg-gray-700 group">
+              <button @click="saveCodeToFile(
+                activeCodeMenuRef.value?.textContent || '',
+                activeCodeMenuRef.value?.className.replace('language-', '') || ''
+              )"
+                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 group">
                 <svg class="w-4 h-4 mr-3 opacity-60 group-hover:scale-110 transition-transform duration-150"
                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path
@@ -292,7 +310,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, type Ref } from 'vue'
-import { useBreakpoints, useScroll, useWindowFocus, useClipboard } from '@vueuse/core'
+import { useBreakpoints, useScroll, useWindowFocus, useClipboard, useElementBounding, useWindowSize } from '@vueuse/core'
 import type { Breakpoints } from '@vueuse/core'
 import { useAIChat } from './composables/useAIChat'
 import { useSupabase } from './composables/useSupabase'
@@ -312,18 +330,24 @@ import ContextAlchemyPanel from './components/ContextAlchemyPanel.vue'
 import * as DropdownMenu from 'radix-vue'
 import { MoreVertical, Copy, GitFork, Bookmark, Link2 } from 'lucide-vue-next'
 import { useStore } from './lib/store'
+import type { ObsidianFile } from './composables/useObsidianFiles'
+import type { MarkedOptions } from 'marked'
+import type { UseOpenRouterReturn } from './composables/useOpenRouter'
+import type { UseSupabaseReturn } from './composables/useSupabase'
 
-// Core chat functionality
-const { setApiKey } = useOpenRouter()
+// Initialize store
 const store = useStore()
 
+// Core chat functionality
 const {
+  apiKey,
+  setApiKey,
+  hasValidKey,
   messages,
   isLoading,
   error,
   currentModel,
   modelName,
-  hasValidKey,
   availableModels,
   enabledModels,
   sendMessage,
@@ -335,17 +359,17 @@ const {
   temperature,
   updateTemperature,
   exportChat
-} = useAIChat()
+} = useOpenRouter() as UseOpenRouterReturn
 
 // Chat history
-const { loadChatHistories, hasValidSupabaseConfig, deleteAllChats } = useSupabase()
+const { loadChatHistories, hasValidSupabaseConfig, deleteAllChats } = useSupabase() as UseSupabaseReturn
 const chatHistory = ref<ChatHistory[]>([])
 
 // Load chat history on mount
 onMounted(async () => {
   try {
     chatHistory.value = await loadChatHistories()
-    if (chatHistory.value.length > 0) {
+    if (chatHistory.value.length > 0 && loadChat) {
       await loadChat(chatHistory.value[0].id)
     }
   } catch (err) {
@@ -354,7 +378,7 @@ onMounted(async () => {
 })
 
 // Watch for new messages to update chat history
-watch(messages, async () => {
+watch(() => messages, async () => {
   try {
     chatHistory.value = await loadChatHistories()
   } catch (err) {
@@ -386,19 +410,129 @@ watch(messages, () => {
 // Message sending
 const isSending = ref(false)
 
+// Track files included in the next message
+const messageIncludedFiles = ref<Array<{ title: string; path: string; content: string }>>([])
+
+// Track all @ mentions and their positions
+const mentions = ref<Array<{
+  startIndex: number
+  endIndex: number
+  file: ObsidianFile
+}>>([])
+
+// Update positions of all mentions after the given index
+function updateMentionPositions(afterIndex: number, lengthDiff: number) {
+  mentions.value = mentions.value.map(mention => {
+    if (mention.startIndex > afterIndex) {
+      return {
+        ...mention,
+        startIndex: mention.startIndex + lengthDiff,
+        endIndex: mention.endIndex + lengthDiff
+      }
+    }
+    return mention
+  }).sort((a, b) => a.startIndex - b.startIndex)
+}
+
+async function insertObsidianLink(file: ObsidianFile) {
+  try {
+    // Get the vault path
+    const vaultPath = await store.get('obsidian-vault-path')
+
+    // Get the file content
+    const content = await window.electron.ipcRenderer.invoke('get-obsidian-file-content', {
+      vaultPath,
+      filePath: file.path
+    })
+
+    // Calculate the end index based on the current mention
+    const endIndex = mentionStartIndex.value + searchQuery.value.length + 1
+    const linkText = `[[${file.title}]]`
+    const oldLength = endIndex - mentionStartIndex.value
+    const newLength = linkText.length
+    const lengthDiff = newLength - oldLength
+
+    // Insert the link
+    newMessage.value =
+      newMessage.value.slice(0, mentionStartIndex.value) +
+      linkText +
+      newMessage.value.slice(endIndex)
+
+    // Update positions of existing mentions
+    updateMentionPositions(mentionStartIndex.value, lengthDiff)
+
+    // Track this mention
+    mentions.value.push({
+      startIndex: mentionStartIndex.value,
+      endIndex: mentionStartIndex.value + linkText.length,
+      file
+    })
+
+    // Store the file content to be included in the next message
+    // Avoid duplicates
+    if (!messageIncludedFiles.value.some(f => f.path === file.path)) {
+      messageIncludedFiles.value.push({
+        title: file.title,
+        path: file.path,
+        content: content || ''
+      })
+    }
+
+    showMentionPopup.value = false
+    mentionStartIndex.value = -1
+    searchQuery.value = ''
+  } catch (err) {
+    console.error('Failed to get file content:', err)
+    error.value = 'Failed to include file content'
+  }
+}
+
+// Handle message submission
 async function handleSubmit() {
   if (!newMessage.value.trim() || isLoading.value) return
 
   try {
-    isSending.value = true
-    const message = newMessage.value
+    await sendMessage(newMessage.value, messageIncludedFiles.value)
     newMessage.value = ''
-
-    await scrollToBottom(false)
-    await sendMessage(message)
-  } finally {
-    isSending.value = false
+    // Clear included files and mentions after sending
+    messageIncludedFiles.value = []
+    mentions.value = []
+  } catch (err) {
+    console.error('Failed to send message:', err)
+    error.value = 'Failed to send message'
   }
+}
+
+function handleInput(e: Event) {
+  const input = e.target as HTMLInputElement
+  const value = input.value
+  const cursorPosition = input.selectionStart || 0
+
+  // Find the last @ before cursor that isn't part of an existing mention
+  const lastAtIndex = findLastUnusedAtSymbol(value, cursorPosition)
+
+  if (lastAtIndex >= 0) {
+    mentionStartIndex.value = lastAtIndex
+    showMentionPopup.value = true
+    const query = value.slice(lastAtIndex + 1, cursorPosition)
+    searchQuery.value = query
+  } else {
+    showMentionPopup.value = false
+    mentionStartIndex.value = -1
+    searchQuery.value = ''
+  }
+}
+
+function findLastUnusedAtSymbol(text: string, cursorPosition: number) {
+  const textBeforeCursor = text.slice(0, cursorPosition)
+  const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+
+  if (lastAtIndex === -1) return -1
+
+  // Check if this @ is part of an existing mention
+  return mentions.value.some(mention =>
+    lastAtIndex >= mention.startIndex && lastAtIndex <= mention.endIndex
+  ) ? -1 : lastAtIndex
 }
 
 // Basic markdown rendering
@@ -504,29 +638,6 @@ function handleKeydown(e: KeyboardEvent) {
       insertObsidianLink(obsidianSearchResults.value[0])
     }
   }
-}
-
-function handleInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  const value = input.value
-
-  if (showMentionPopup.value && mentionStartIndex.value >= 0) {
-    const query = value.slice(mentionStartIndex.value + 1)
-    searchQuery.value = query
-
-    if (!query.includes('@')) {
-      showMentionPopup.value = true
-    }
-  }
-}
-
-function insertObsidianLink(file: any) {
-  const before = newMessage.value.slice(0, mentionStartIndex.value)
-  const after = newMessage.value.slice(mentionStartIndex.value + searchQuery.value.length + 1)
-  newMessage.value = `${before}[[${file.title}]]${after}`
-  showMentionPopup.value = false
-  mentionStartIndex.value = -1
-  searchQuery.value = ''
 }
 
 // Panel state
@@ -638,7 +749,7 @@ onMounted(() => {
 const isSettingsOpen = ref(false)
 
 // Initialize theme and progress bar
-const theme = ref('dark')
+const theme = ref<'system' | 'light' | 'dark'>('dark')
 const showProgressBar = ref(true)
 
 // Load settings on mount
@@ -747,6 +858,46 @@ onMounted(() => {
 })
 
 const { formatModelCost } = useOpenRouter()
+
+function removeIncludedFile(path: string) {
+  // Remove from included files
+  messageIncludedFiles.value = messageIncludedFiles.value.filter(f => f.path !== path)
+
+  // Remove from mentions and update text
+  const mention = mentions.value.find(m => m.file.path === path)
+  if (mention) {
+    const before = newMessage.value.slice(0, mention.startIndex)
+    const after = newMessage.value.slice(mention.endIndex)
+    newMessage.value = before + after
+
+    // Update other mention positions
+    const lengthDiff = -(mention.endIndex - mention.startIndex)
+    mentions.value = mentions.value.filter(m => m.file.path !== path)
+    updateMentionPositions(mention.startIndex, lengthDiff)
+  }
+}
+
+const activeCodeMenuRef = ref<HTMLElement | null>(null)
+const { width: windowWidth, height: windowHeight } = useWindowSize()
+const { top, right, bottom, left, update: updateBounding } = useElementBounding(activeCodeMenuRef)
+
+const codeMenuPosition = computed(() => {
+  if (!activeCodeMenu) return { top: '0px', right: '0px' }
+
+  // Update bounding rect when menu becomes active
+  nextTick(() => {
+    const el = document.getElementById(activeCodeMenu)
+    if (el) {
+      activeCodeMenuRef.value = el
+      updateBounding()
+    }
+  })
+
+  return {
+    top: `${top.value + window.scrollY + 40}px`,
+    right: `${windowWidth.value - right.value + 100}px`
+  }
+})
 </script>
 
 <style>

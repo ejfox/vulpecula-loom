@@ -139,13 +139,29 @@
 import { ref, onMounted, computed } from 'vue'
 import { useOpenRouter } from '../composables/useOpenRouter'
 
+interface ChatMessage {
+  model?: string
+}
+
+interface Chat {
+  id: string
+  title?: string
+  messages?: ChatMessage[]
+}
+
+interface Model {
+  id: string
+  name: string
+  description?: string
+}
+
 defineProps<{
-  chatHistory: any[]
+  chatHistory: Chat[]
   currentChatId: string | null
   currentModel: string
 }>()
 
-const { enabledModels, getModelCost, recentModels, trackModelUsage } = useOpenRouter()
+const { enabledModels, getModelCost, recentModels, trackModelUsage, fetchAvailableModels } = useOpenRouter()
 
 const emit = defineEmits<{
   'clear-chat': []
@@ -179,7 +195,7 @@ onMounted(async () => {
   await fetchAvailableModels()
 })
 
-function getModelDescription(id: string, model: any): string {
+function getModelDescription(id: string, model: Model): string {
   if (model?.description) {
     return model.description
   }
@@ -201,9 +217,13 @@ function getModelDescription(id: string, model: any): string {
 }
 
 // Get unique models used in a chat's messages
-function getUsedModels(chat: any) {
+function getUsedModels(chat: Chat): string[] {
   if (!chat.messages) return []
-  const models = new Set(chat.messages.map((msg: any) => msg.model).filter(Boolean))
+  const models = new Set(
+    chat.messages
+      .map((msg: ChatMessage) => msg.model)
+      .filter((model): model is string => typeof model === 'string')
+  )
   return Array.from(models).slice(0, 3) // Return top 3 models
 }
 
