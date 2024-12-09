@@ -311,11 +311,25 @@ async function createWindow() {
   });
 
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
+    try {
+      await win.loadURL(VITE_DEV_SERVER_URL);
+    } catch (err) {
+      console.error("Failed to load dev server:", err);
+    }
+    // Always open dev tools in development
     win.webContents.openDevTools();
   } else {
-    win.loadFile(indexHtml);
+    try {
+      await win.loadFile(indexHtml);
+    } catch (err) {
+      console.error("Failed to load index.html:", err);
+    }
   }
+
+  // Add error handler for webContents
+  win.webContents.on("did-fail-load", (event, errorCode, errorDescription) => {
+    console.error("Failed to load:", errorCode, errorDescription);
+  });
 
   // Handle external links
   win.webContents.setWindowOpenHandler(({ url }) => {

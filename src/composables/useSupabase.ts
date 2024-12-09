@@ -34,6 +34,12 @@ export function useSupabase() {
     return hasUrl && hasKey;
   });
 
+  const hasValidSupabaseConfig = computed(() => {
+    return Boolean(
+      import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_KEY
+    );
+  });
+
   async function saveChatHistory(
     history: Omit<ChatHistory, "id" | "created_at" | "updated_at">
   ) {
@@ -109,6 +115,13 @@ export function useSupabase() {
   async function loadChatHistories(thread?: string) {
     try {
       console.group("Loading chat histories");
+      console.log("Supabase config:", {
+        url: import.meta.env.VITE_SUPABASE_URL,
+        hasKey: !!import.meta.env.VITE_SUPABASE_KEY,
+        isConfigured: isConfigured.value,
+        hasValidSupabaseConfig: hasValidSupabaseConfig.value,
+      });
+
       console.log("Thread parameter:", thread || "No thread specified");
 
       let query = supabase
@@ -170,6 +183,7 @@ export function useSupabase() {
   return {
     supabase,
     isConfigured,
+    hasValidSupabaseConfig,
     saveChatHistory,
     updateChatHistory,
     loadChatHistory,

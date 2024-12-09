@@ -10,6 +10,22 @@ interface Shell {
   openExternal(url: string): Promise<void>;
 }
 
+// Main API used by the app
+interface ElectronAPI {
+  onToggleChatSidebar: (callback: () => void) => void;
+  onToggleContextPanel: (callback: () => void) => void;
+  removeToggleChatSidebar: (callback: () => void) => void;
+  removeToggleContextPanel: (callback: () => void) => void;
+  showWindow: () => Promise<void>;
+  setBadge: (count: number) => Promise<void>;
+  onNewChat: (callback: () => void) => void;
+  removeNewChat: (callback: () => void) => void;
+  openExternal: (url: string) => Promise<void>;
+  onOpenSettings: (callback: () => void) => void;
+  removeOpenSettings: (callback: () => void) => void;
+}
+
+// Base electron API
 interface Electron {
   ipcRenderer: IpcRenderer;
   shell: Shell;
@@ -18,22 +34,8 @@ interface Electron {
 declare global {
   interface Window {
     electron: Electron;
+    electronAPI: ElectronAPI;
   }
-}
-
-interface ElectronAPI {
-  ipcRenderer: IpcRenderer;
-}
-
-declare interface Window {
-  electron: ElectronAPI;
-}
-
-declare module "electron" {
-  import { IpcMain, Dialog, IpcMainInvokeEvent } from "electron";
-  export { IpcMain, Dialog, IpcMainInvokeEvent };
-  export const ipcMain: IpcMain;
-  export const dialog: Dialog;
 }
 
 export {};
