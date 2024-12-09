@@ -38,3 +38,19 @@ Vulpecula Loom is a desktop application that combines the power of modern AI lan
 - npm or yarn
 - An OpenRouter API key
 - Obsidian vault (optional)
+
+### Building the Application
+
+#### For macOS
+
+1. `git clone https://github.com/yourusername/vulpecula-loom.git`
+2. `cd vulpecula-loom`
+3. `yarn install`
+4. `yarn build`
+
+The built application will be available in the `release/{version}/` directory:
+- `electron-vue-vite.app` - The macOS application bundle
+- `electron-vue-vite-{version}-arm64.dmg` - The disk image installer for Apple Silicon
+- `electron-vue-vite-{version}-x64.dmg` - The disk image installer for Intel Macs
+
+Note: To build a signed application for distribution, you'll need an Apple Developer account and appropriate certificates. See [Apple's documentation](https://developer.apple.com/documentation/xcode/notarizing_macos_software_before_distribution) for more details on app notarization.

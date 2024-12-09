@@ -1,5 +1,6 @@
 {
-  "name": "electron-vue-vite",
+  "name": "vulpecula-loom",
+  "productName": "Vulpecula Loom",
   "version": "28.1.0",
   "main": "./dist-electron/main/index.js",
   "description": "A Second Brain for Your AI",
@@ -51,6 +52,8 @@
     "vite-plugin-electron-renderer": "^0.14.6"
   },
   "build": {
+    "appId": "com.ejfox.vulpecula-loom",
+    "productName": "Vulpecula Loom",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
@@ -68,6 +71,18 @@
           "**/*"
         ]
       }
-    ]
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "title": "Vulpecula Loom",
+      "icon": "build/icon.icns"
+    }
   }
 }
