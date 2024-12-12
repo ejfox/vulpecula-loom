@@ -1,4 +1,4 @@
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useStore } from "../lib/store";
 import { useDebounce } from "@vueuse/core";
 
@@ -16,20 +16,43 @@ export function useObsidianFiles() {
   const isSearching = ref(false);
   const searchResults = ref<ObsidianFile[]>([]);
   const resolvedVaultPath = ref<string>("");
+  const error = ref<string | null>(null);
 
   // Get and resolve the vault path
   const updateVaultPath = async () => {
     try {
+      error.value = null;
       const path = await store.get("obsidian-vault-path");
       resolvedVaultPath.value = path || "";
     } catch (err) {
       console.error("Failed to get vault path:", err);
+      error.value =
+        err instanceof Error ? err.message : "Failed to get vault path";
       resolvedVaultPath.value = "";
     }
   };
 
-  // Initial vault path resolution
-  updateVaultPath();
+  // Initial vault path resolution - wait for electron to be ready
+  onMounted(() => {
+    if (window.electron?.store) {
+      updateVaultPath();
+    } else {
+      const checkInterval = setInterval(() => {
+        if (window.electron?.store) {
+          clearInterval(checkInterval);
+          updateVaultPath();
+        }
+      }, 100);
+
+      // Clear interval after 5 seconds if electron is still not available
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!window.electron?.store) {
+          error.value = "Electron store not available after timeout";
+        }
+      }, 5000);
+    }
+  });
 
   const hasVault = computed(() => Boolean(resolvedVaultPath.value));
 
@@ -110,5 +133,6 @@ export function useObsidianFiles() {
     isSearching,
     hasVault,
     searchFiles,
+    error,
   };
 }

@@ -1,8 +1,21 @@
-import { contextBridge, ipcRenderer, shell } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
+import type { StoreSchema } from "../types/store";
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld("electronAPI", {
+console.log("Preload script running");
+
+const electronAPI = {
+  store: {
+    get: <K extends keyof StoreSchema>(key: K) =>
+      ipcRenderer.invoke("store-get", key),
+    set: <K extends keyof StoreSchema>(key: K, value: StoreSchema[K]) =>
+      ipcRenderer.invoke("store-set", key, value),
+    clear: () => ipcRenderer.invoke("store-clear"),
+  },
+  shell: {
+    openExternal(url: string) {
+      return ipcRenderer.invoke("shell-open-external", url);
+    },
+  },
   onToggleChatSidebar: (callback: () => void) =>
     ipcRenderer.on("toggle-chat-sidebar", callback),
   onToggleContextPanel: (callback: () => void) =>
@@ -11,42 +24,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeListener("toggle-chat-sidebar", callback),
   removeToggleContextPanel: (callback: () => void) =>
     ipcRenderer.removeListener("toggle-context-panel", callback),
-  // Window management
   showWindow: () => ipcRenderer.invoke("show-window"),
-  // Dock/Badge management
   setBadge: (count: number) => ipcRenderer.invoke("set-badge", count),
-  // New chat handler
   onNewChat: (callback: () => void) => ipcRenderer.on("new-chat", callback),
   removeNewChat: (callback: () => void) =>
     ipcRenderer.removeListener("new-chat", callback),
-  // Shell utilities
-  openExternal: (url: string) => shell.openExternal(url),
-  // Settings handler
   onOpenSettings: (callback: () => void) =>
     ipcRenderer.on("open-settings", callback),
   removeOpenSettings: (callback: () => void) =>
     ipcRenderer.removeListener("open-settings", callback),
-});
-
-console.log("Preload script running");
-
-const electronAPI = {
-  shell: {
-    openExternal(url: string) {
-      console.log("Shell openExternal called with:", url);
-      return shell.openExternal(url);
-    },
-  },
-  ipcRenderer: {
-    invoke(channel: string, ...args: any[]) {
-      return ipcRenderer.invoke(channel, ...args);
-    },
-  },
 };
 
 try {
   console.log("Exposing electron API...");
   contextBridge.exposeInMainWorld("electron", electronAPI);
+  contextBridge.exposeInMainWorld("electronAPI", electronAPI);
   console.log("Electron API exposed successfully");
 } catch (error) {
   console.error("Failed to expose electron API:", error);

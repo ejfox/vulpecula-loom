@@ -1,55 +1,63 @@
-import type ElectronStore from 'electron-store'
+import Store from "electron-store";
+import { ipcMain } from "electron";
 
-// Use dynamic import for the actual Store constructor
-const Store = (async () => {
-  const module = await import('electron-store')
-  return module.default
-})()
-
-interface StoreSchema {
-  'openrouter-api-key': string
-  'ai-chat-model': string
-  'theme': 'system' | 'light' | 'dark'
-  'obsidian-vault-path': string
+export interface StoreSchema {
+  "api-key"?: string;
+  theme?: string;
+  "show-progress-bar"?: boolean;
+  "show-only-pinned-models"?: boolean;
+  "pinned-models"?: string[];
+  "window-state"?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  "remember-window-state"?: boolean;
+  "minimize-to-tray"?: boolean;
+  "show-notifications"?: boolean;
+  "play-sounds"?: boolean;
+  "show-badge-count"?: boolean;
+  "obsidian-vault-path"?: string;
+  "ai-chat-model"?: string;
+  "enabled-model-ids"?: string[];
+  "recent-model-ids"?: string[];
 }
 
-// Initialize store after dynamic import
-let store: any // Temporarily type as any to avoid TS errors during initialization
+const store = new Store<StoreSchema>({
+  defaults: {
+    "api-key": "",
+    "ai-chat-model": "anthropic/claude-3-opus",
+    theme: "system",
+    "obsidian-vault-path": "",
+    "remember-window-state": true,
+    "minimize-to-tray": false,
+    "show-notifications": true,
+    "play-sounds": true,
+    "show-badge-count": true,
+    "show-progress-bar": true,
+    "show-only-pinned-models": false,
+    "pinned-models": [],
+    "enabled-model-ids": [],
+    "recent-model-ids": [],
+  },
+});
 
-async function initStore() {
-  const StoreConstructor = await Store
-  store = new StoreConstructor<StoreSchema>({
-    defaults: {
-      'openrouter-api-key': '',
-      'ai-chat-model': 'anthropic/claude-3.5-sonnet:beta',
-      'theme': 'system',
-      'obsidian-vault-path': ''
-    },
-    name: 'vulpecula-config'
-  })
-  return store
-}
+export function setupStoreHandlers() {
+  ipcMain.handle("store-get", async (_event, key: keyof StoreSchema) => {
+    return store.get(key);
+  });
 
-// Export an async function to get the store wrapper
-export async function getStoreWrapper() {
-  if (!store) {
-    await initStore()
-  }
-  
-  // Type the store methods explicitly
-  const wrapper = {
-    get: function<K extends keyof StoreSchema>(key: K): StoreSchema[K] {
-      return (store as any).get(key)
-    },
-    set: function<K extends keyof StoreSchema>(key: K, value: StoreSchema[K]): void {
-      (store as any).set(key, value)
-    },
-    clear: function(): void {
-      (store as any).clear()
+  ipcMain.handle(
+    "store-set",
+    async (_event, key: keyof StoreSchema, value: any) => {
+      store.set(key, value);
+      return true;
     }
-  }
+  );
 
-  return wrapper
+  ipcMain.handle("store-clear", async () => {
+    store.clear();
+    return true;
+  });
 }
-
-export type { StoreSchema } 

@@ -1,21 +1,13 @@
 <template>
-  <div class="h-screen flex flex-col bg-gray-900 overflow-hidden">
-    <TitleBar 
-      :model-name="modelName" 
-      :is-loading="isLoading" 
-      :is-sending="isSending"
-      v-model:isContextPanelOpen="isContextPanelOpen" 
-      v-model:isChatSidebarOpen="isChatSidebarOpen"
-      :is-mobile="isMobile"
-    >
+  <div class="h-screen flex flex-col bg-gray-900 dark:bg-gray-950 overflow-hidden">
+    <TitleBar :model-name="modelName" :is-loading="isLoading" :is-sending="isSending"
+      v-model:isContextPanelOpen="isContextPanelOpen" v-model:isChatSidebarOpen="isChatSidebarOpen"
+      :is-mobile="isMobile">
       <template #actions>
         <!-- Context Panel Toggle Button -->
-        <button 
-          v-if="!isMobile" 
-          @click="isContextPanelOpen = !isContextPanelOpen"
-          class="p-1 text-white/40 hover:text-white/600 transition-colors"
-          :class="{ 'text-white/80': isContextPanelOpen }"
-        >
+        <button v-if="!isMobile" @click="isContextPanelOpen = !isContextPanelOpen"
+          class="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          :class="{ 'text-gray-700 dark:text-gray-200': isContextPanelOpen }">
           <span class="sr-only">Toggle context panel</span>
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -30,175 +22,77 @@
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <div class="flex-1 flex min-h-0 p-1.5 gap-1.5 relative overflow-hidden">
           <!-- Chat Sidebar -->
-          <Transition
-            enter-active-class="transition-transform duration-300 ease-in-out"
-            leave-active-class="transition-transform duration-300 ease-in-out"
-            enter-from-class="-translate-x-full"
-            leave-to-class="-translate-x-full"
-          >
-            <div 
-              v-if="isChatSidebarOpen"
-              :class="[
-                'bg-gray-900 rounded-lg overflow-hidden flex flex-col',
-                isMobile ? 'fixed inset-y-0 left-0 z-40 w-80 mt-10' : 'w-[38.2%] max-w-sm flex-shrink-0'
-              ]"
-            >
-              <ChatSidebar 
-                :chat-history="chatHistory"
-                :current-chat-id="currentChatId"
-                :current-model="currentModel"
-                @clear-chat="clearChat"
-                @load-chat="loadChat"
-                @set-model="setModel"
-              />
+          <Transition enter-active-class="transition-transform duration-300 ease-in-out"
+            leave-active-class="transition-transform duration-300 ease-in-out" enter-from-class="-translate-x-full"
+            leave-to-class="-translate-x-full">
+            <div v-if="isChatSidebarOpen" :class="[
+              'bg-white dark:bg-gray-950 rounded-lg overflow-hidden flex flex-col',
+              isMobile ? 'fixed inset-y-0 left-0 z-40 w-80 mt-10' : 'w-[38.2%] max-w-sm flex-shrink-0'
+            ]">
+              <ChatSidebar :chat-history="chatHistory" :current-chat-id="currentChatId" :current-model="currentModel"
+                :available-models="availableModels" :show-only-pinned-models="preferences.showOnlyPinnedModels"
+                @new-chat="createNewChat" @load-chat="loadChat" @set-model="setModel" @delete-chat="handleDeleteChat" />
             </div>
           </Transition>
 
           <!-- Main Chat Area -->
-          <main class="flex-1 flex flex-col min-h-0 bg-gray-900 rounded-lg overflow-hidden">
+          <main class="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-950 rounded-lg overflow-hidden">
             <ChatMetadata :stats="chatStats" @export="exportChat" />
 
             <!-- API Key Warning -->
-            <div v-if="!hasValidKey" class="flex-shrink-0 p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100">
-              <div class="flex items-center flex-1">
-                <span>Please set your OpenRouter API key:</span>
-                <form @submit.prevent="saveApiKey" class="flex items-center ml-2 flex-1">
-                  <input 
-                    v-model="tempApiKey" 
-                    type="password"
-                    class="p-1 border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-1 max-w-md"
-                    placeholder="sk-or-..."
-                  />
-                  <button 
-                    type="submit"
-                    :disabled="!tempApiKey.trim()"
-                    class="ml-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
-                  >
-                    {{ savingKey ? 'Saving...' : 'Save' }}
-                  </button>
-                </form>
-              </div>
-            </div>
+            <ApiKeyWarning :has-valid-key="hasValidKey" :saving-key="savingKey" @save-api-key="saveApiKey" />
 
             <!-- Supabase Warning -->
-            <div v-if="!hasValidSupabaseConfig" class="flex-shrink-0 p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100">
+            <div v-if="!hasValidSupabaseConfig"
+              class="flex-shrink-0 p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100">
               <div class="flex items-center flex-1">
                 <span>Please configure Supabase to enable chat history</span>
               </div>
             </div>
 
             <!-- Chat Messages -->
-            <section ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+            <section ref="chatContainer"
+              class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-gray-950">
               <div class="p-4 space-y-3">
-                <TransitionGroup name="message" tag="div" class="space-y-3">
-                  <div 
-                    v-for="message in messages" 
-                    :key="`${message.id}-${message.timestamp}`"
-                    :class="[
-                      'max-w-[85%] transition-all duration-300 group',
-                      message.role === 'user' ? 'ml-auto' : ''
-                    ]"
-                  >
-                    <!-- Message Metadata -->
-                    <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      <div class="flex items-center space-x-2">
-                        <span>{{ message.role === 'user' ? 'You' : 'AI' }}</span>
-                        <span>•</span>
-                        <span>{{ message.model || modelName }}</span>
-                        <span v-if="message.tokens">
-                          <span>•</span>
-                          <span>{{ message.tokens.total }} tokens</span>
-                          <span v-if="message.cost" class="ml-1 text-blue-600 dark:text-blue-400">
-                            ({{ formatModelCost(message.model || modelName, message.cost) }})
-                          </span>
-                        </span>
-                      </div>
-                      <div class="flex items-center space-x-2">
-                        <span>{{ new Intl.DateTimeFormat('en-US', {
-                          hour: 'numeric',
-                          minute: 'numeric',
-                          second: 'numeric',
-                          hour12: true
-                        }).format(new Date(message.timestamp)) }}</span>
-                      </div>
-                    </div>
-
-                    <!-- Message Content -->
-                    <div 
-                      class="p-2 sm:p-3 rounded-lg prose dark:prose-invert max-w-none" 
-                      :class="message.role === 'user' ?
-                        'bg-blue-200 dark:bg-blue-800 prose-blue dark:prose-blue' :
-                        'bg-gray-200 dark:bg-gray-700'"
-                      v-html="renderMarkdown(message.content)"
-                    >
-                    </div>
-                  </div>
+                <TransitionGroup name="message-list" tag="div" class="space-y-3" :duration="300"
+                  move-class="message-move">
+                  <ChatMessage v-for="(message, index) in messages"
+                    :key="message.id || `msg-${currentChatId}-${index}-${message.timestamp}`" :message="message"
+                    :model-name="modelName" :index="index" :current-chat-id="currentChatId"
+                    :format-model-cost="formatModelCost" @copy="copyMessage" @delete="deleteMessage"
+                    @fork="handleForkChat" />
                 </TransitionGroup>
               </div>
             </section>
 
             <!-- Message Input -->
-            <footer class="flex-shrink-0 p-3 bg-gray-800">
-              <form @submit.prevent="handleSubmit" class="flex items-center gap-2">
-                <div class="relative flex-1">
-                  <input 
-                    v-model="newMessage"
-                    type="text"
-                    placeholder="Type your message... (Use @ to link Obsidian files)"
-                    :disabled="isLoading || !hasValidKey"
-                    @keydown="handleKeydown"
-                    @input="handleInput"
-                    class="w-full p-2 rounded-md border border-gray-700 bg-gray-900 text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm min-w-0"
-                  />
-                  
-                  <ObsidianMentionPopup 
-                    :show="showMentionPopup"
-                    :results="obsidianSearchResults"
-                    :is-searching="isSearchingFiles"
-                    :has-vault="hasObsidianVault"
-                    @select="insertObsidianLink"
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  :disabled="isLoading || !hasValidKey"
-                  class="px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-600 rounded-md whitespace-nowrap text-sm transition-colors"
-                >
-                  {{ isLoading ? 'Sending...' : 'Send' }}
-                </button>
-              </form>
-            </footer>
+            <ChatInput :is-loading="isLoading" :has-valid-key="hasValidKey" :show-mention-popup="showMentionPopup"
+              :is-searching-files="isSearchingFiles" :has-obsidian-vault="hasObsidianVault"
+              :obsidian-search-results="obsidianSearchResults"
+              @submit="({ message, includedFiles }) => sendMessage(message, includedFiles)"
+              @mention-popup="(show) => showMentionPopup = show" @obsidian-link="handleObsidianLink"
+              @input="(query) => searchQuery = query" />
           </main>
         </div>
       </div>
 
       <!-- Context Panel -->
-      <Transition
-        enter-active-class="transition-transform duration-300 ease-in-out"
-        leave-active-class="transition-transform duration-300 ease-in-out"
-        enter-from-class="translate-x-full"
-        leave-to-class="translate-x-full"
-      >
-        <div 
-          v-if="isContextPanelOpen"
-          :class="[
-            'bg-gray-900 overflow-hidden flex flex-col',
-            isMobile ? 'fixed inset-y-0 right-0 z-40 w-80 mt-10' : 'w-96 flex-shrink-0'
-          ]"
-        >
+      <Transition enter-active-class="transition-transform duration-300 ease-in-out"
+        leave-active-class="transition-transform duration-300 ease-in-out" enter-from-class="translate-x-full"
+        leave-to-class="translate-x-full">
+        <div v-if="isContextPanelOpen" :class="[
+          'bg-white dark:bg-gray-950 overflow-hidden flex flex-col',
+          isMobile ? 'fixed inset-y-0 right-0 z-40 w-80 mt-10' : 'w-96 flex-shrink-0'
+        ]">
           <ContextAlchemyPanel v-model:isContextPanelOpen="isContextPanelOpen" />
         </div>
       </Transition>
     </div>
 
     <!-- Settings Modal -->
-    <SettingsModal 
-      v-model="isSettingsOpen"
-      v-model:theme="theme"
-      v-model:showProgressBar="showProgressBar"
-      @validate-api-key="validateApiKey"
-    />
+    <SettingsModal v-model="isSettingsOpen" v-model:theme="theme" v-model:showProgressBar="showProgressBar"
+      v-model:showOnlyPinnedModels="preferences.showOnlyPinnedModels" :available-models="availableModels"
+      @validate-api-key="validateApiKey" />
   </div>
 </template>
 
@@ -221,6 +115,9 @@ import ChatMetadata from './components/ChatMetadata.vue'
 import ObsidianMentionPopup from './components/ObsidianMentionPopup.vue'
 import ContextAlchemyPanel from './components/ContextAlchemyPanel.vue'
 import SettingsModal from './components/SettingsModal.vue'
+import ChatMessage from './components/ChatMessage.vue'
+import ChatInput from './components/ChatInput.vue'
+import ApiKeyWarning from './components/ApiKeyWarning.vue'
 
 // Initialize store
 const store = useStore()
@@ -241,18 +138,28 @@ const {
   loadChat,
   clearChat,
   chatStats,
-  exportChat
+  exportChat,
+  validateApiKey,
+  formatModelCost,
+  availableModels
 } = useOpenRouter()
 
 // Chat history
-const { loadChatHistories, hasValidSupabaseConfig } = useSupabase()
+const {
+  loadChatHistories,
+  hasValidSupabaseConfig,
+  forkChat: forkChatInDb,
+  supabase,
+  deleteChat,
+  saveChatHistory
+} = useSupabase()
 
 // Types
 interface ChatMessage {
-  id: string
+  id?: string  // Optional since some messages might not have IDs yet
   role: 'user' | 'assistant'
   content: string
-  timestamp: number
+  timestamp: string  // ISO string from the database
   model?: string
   tokens?: {
     total: number
@@ -262,13 +169,22 @@ interface ChatMessage {
   cost?: number
 }
 
+interface ChatMetadata {
+  lastModel: string
+  lastUpdated: string
+  messageCount: number
+}
+
 interface ChatHistoryItem {
   id: string
-  title: string
+  title: string | null
   messages: ChatMessage[]
   model: string
+  metadata: ChatMetadata
   created_at: string
   updated_at: string
+  user_id?: string
+  thread?: string | null
 }
 
 interface Mention {
@@ -328,20 +244,35 @@ const mentions = ref<Mention[]>([])
 // Load initial data
 const { isDark } = useTheme()
 
+// Keyboard shortcut handler
+const handleKeyboardShortcuts = (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    e.preventDefault()
+    isSettingsOpen.value = true
+  }
+}
+
+// Add to the preferences section at the top
+const preferences = ref({
+  showOnlyPinnedModels: false
+})
+
 onMounted(async () => {
+  // Add keyboard shortcut handler
+  window.addEventListener('keydown', handleKeyboardShortcuts)
+
   try {
-    chatHistory.value = await loadChatHistories()
-    if (chatHistory.value.length > 0 && loadChat) {
-      await loadChat(chatHistory.value[0].id)
-    }
-    
-    // Load settings
-    const [savedTheme, savedProgressBar] = await Promise.all([
+    // Load all settings at once
+    const [savedTheme, savedProgressBar, showOnlyPinnedModels] = await Promise.all([
       store.get('theme'),
-      store.get('showProgressBar')
+      store.get('show-progress-bar'),
+      store.get('show-only-pinned-models')
     ])
+
+    // Apply settings
     theme.value = savedTheme || 'dark'
     showProgressBar.value = Boolean(savedProgressBar ?? true)
+    preferences.value.showOnlyPinnedModels = Boolean(showOnlyPinnedModels)
 
     // Load theme
     if (savedTheme === 'dark') {
@@ -349,31 +280,25 @@ onMounted(async () => {
     } else if (savedTheme === 'light') {
       isDark.value = false
     }
-    // If 'system', useTheme will handle it automatically
-    
+
+    // Load chat history
+    chatHistory.value = await loadChatHistories()
+    if (chatHistory.value.length > 0 && loadChat) {
+      await loadChat(chatHistory.value[0].id)
+    }
   } catch (err) {
     console.error('Failed to load initial data:', err)
   }
 })
 
-// Methods
-const handleSubmit = async () => {
-  if (!newMessage.value.trim() || isLoading.value) return
-  
-  try {
-    await sendMessage(newMessage.value, messageIncludedFiles.value)
-    newMessage.value = ''
-    messageIncludedFiles.value = []
-    mentions.value = []
-  } catch (err) {
-    console.error('Failed to send message:', err)
-    error.value = 'Failed to send message'
-  }
-}
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyboardShortcuts)
+})
 
+// Methods
 const saveApiKey = async () => {
   if (!tempApiKey.value.trim()) return
-  
+
   try {
     savingKey.value = true
     const success = await setApiKey(tempApiKey.value.trim())
@@ -392,54 +317,109 @@ const saveApiKey = async () => {
   }
 }
 
-// Add missing methods
-const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === '@') {
-    showMentionPopup.value = true
-    mentionStartIndex.value = (e.target as HTMLInputElement).selectionStart || 0
-  } else if (e.key === 'Escape') {
-    showMentionPopup.value = false
-  } else if (e.key === 'Enter' && showMentionPopup.value) {
-    e.preventDefault()
-    if (obsidianSearchResults.value.length > 0) {
-      insertObsidianLink(obsidianSearchResults.value[0])
+// Modify scroll behavior
+const scrollToBottom = async (smooth = true) => {
+  await nextTick()
+  if (!chatContainer.value) return
+
+  const container = chatContainer.value
+  container.scrollTo({
+    top: container.scrollHeight,
+    behavior: 'instant' // Always use instant to avoid jarring scroll
+  })
+}
+
+// Watch for chat history updates
+watch(() => currentChatId.value, async (newId) => {
+  if (newId) {
+    try {
+      await loadChat(newId)
+      scrollToBottom() // Scroll after loading
+    } catch (err) {
+      console.error('Failed to load chat:', err)
+      error.value = 'Failed to load chat'
     }
   }
-}
+}, { immediate: true })
 
-const handleInput = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const value = input.value
-  const cursorPosition = input.selectionStart || 0
+// Watch for new messages and scroll
+watch(messages, () => {
+  scrollToBottom()
+}, { deep: true })
 
-  // Find the last @ before cursor that isn't part of an existing mention
-  const lastAtIndex = findLastUnusedAtSymbol(value, cursorPosition)
+const createNewChat = async () => {
+  try {
+    // Clear current messages
+    messages.value = []
+    currentChatId.value = null
 
-  if (lastAtIndex >= 0) {
-    mentionStartIndex.value = lastAtIndex
-    showMentionPopup.value = true
-    const query = value.slice(lastAtIndex + 1, cursorPosition)
-    searchQuery.value = query
-  } else {
-    showMentionPopup.value = false
-    mentionStartIndex.value = -1
-    searchQuery.value = ''
+    // Create new chat in Supabase
+    const newChat = await saveChatHistory({
+      title: null,
+      messages: [],
+      model: currentModel.value,
+      metadata: {
+        lastModel: currentModel.value,
+        lastUpdated: new Date().toISOString(),
+        messageCount: 0
+      }
+    })
+
+    // Set as current chat
+    currentChatId.value = newChat.id
+
+    // Refresh chat history
+    chatHistory.value = await loadChatHistories()
+  } catch (err) {
+    console.error('Failed to create new chat:', err)
+    error.value = 'Failed to create new chat'
   }
 }
 
-const findLastUnusedAtSymbol = (text: string, cursorPosition: number) => {
-  const textBeforeCursor = text.slice(0, cursorPosition)
-  const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+const activeMessageActions = ref<string | null>(null)
 
-  if (lastAtIndex === -1) return -1
-
-  // Check if this @ is part of an existing mention
-  return mentions.value.some(mention =>
-    lastAtIndex >= mention.startIndex && lastAtIndex <= mention.endIndex
-  ) ? -1 : lastAtIndex
+const openMessageActions = (message: ChatMessage, index: number) => {
+  const messageKey = message.id || `msg-${currentChatId}-${index}-${message.timestamp}`
+  activeMessageActions.value = activeMessageActions.value === messageKey ? null : messageKey
 }
 
-const insertObsidianLink = async (file: { title: string; path: string }) => {
+const copyMessage = async (message: ChatMessage) => {
+  await navigator.clipboard.writeText(message.content)
+  activeMessageActions.value = null
+}
+
+const deleteMessage = (message: ChatMessage) => {
+  messages.value = messages.value.filter(m => m.id !== message.id)
+  activeMessageActions.value = null
+}
+
+// Close dropdown when clicking outside
+onMounted(() => {
+  const handleClickOutside = (e: MouseEvent) => {
+    if (activeMessageActions.value && !e.defaultPrevented) {
+      activeMessageActions.value = null
+    }
+  }
+
+  document.addEventListener('click', handleClickOutside)
+  onUnmounted(() => {
+    document.removeEventListener('click', handleClickOutside)
+  })
+})
+
+// Add proper types for handleObsidianLink parameters
+interface ObsidianLinkParams {
+  file: {
+    title: string
+    path: string
+  }
+  mentionStartIndex: number
+  messageIncludedFiles: IncludedFile[]
+  mentions: Mention[]
+  newMessage: string
+}
+
+const handleObsidianLink = async ({ file, mentionStartIndex, messageIncludedFiles, mentions, newMessage }: ObsidianLinkParams) => {
   try {
     // Get the vault path
     const vaultPath = await store.get('obsidian-vault-path')
@@ -451,31 +431,40 @@ const insertObsidianLink = async (file: { title: string; path: string }) => {
     })
 
     // Calculate the end index based on the current mention
-    const endIndex = mentionStartIndex.value + searchQuery.value.length + 1
+    const endIndex = mentionStartIndex + searchQuery.value.length + 1
     const linkText = `[[${file.title}]]`
-    const oldLength = endIndex - mentionStartIndex.value
+    const oldLength = endIndex - mentionStartIndex
     const newLength = linkText.length
     const lengthDiff = newLength - oldLength
 
     // Insert the link
-    newMessage.value =
-      newMessage.value.slice(0, mentionStartIndex.value) +
+    newMessage =
+      newMessage.slice(0, mentionStartIndex) +
       linkText +
-      newMessage.value.slice(endIndex)
+      newMessage.slice(endIndex)
 
     // Update positions of existing mentions
-    updateMentionPositions(mentionStartIndex.value, lengthDiff)
+    mentions = mentions.map((mention: Mention) => {
+      if (mention.startIndex > mentionStartIndex) {
+        return {
+          ...mention,
+          startIndex: mention.startIndex + lengthDiff,
+          endIndex: mention.endIndex + lengthDiff
+        }
+      }
+      return mention
+    }).sort((a: Mention, b: Mention) => a.startIndex - b.startIndex)
 
     // Track this mention
-    mentions.value.push({
-      startIndex: mentionStartIndex.value,
-      endIndex: mentionStartIndex.value + linkText.length,
+    mentions.push({
+      startIndex: mentionStartIndex,
+      endIndex: mentionStartIndex + linkText.length,
       file
     })
 
     // Store the file content
-    if (!messageIncludedFiles.value.some(f => f.path === file.path)) {
-      messageIncludedFiles.value.push({
+    if (!messageIncludedFiles.some((f: IncludedFile) => f.path === file.path)) {
+      messageIncludedFiles.push({
         title: file.title,
         path: file.path,
         content: content || ''
@@ -483,7 +472,7 @@ const insertObsidianLink = async (file: { title: string; path: string }) => {
     }
 
     showMentionPopup.value = false
-    mentionStartIndex.value = -1
+    mentionStartIndex = -1
     searchQuery.value = ''
   } catch (err) {
     console.error('Failed to get file content:', err)
@@ -491,64 +480,86 @@ const insertObsidianLink = async (file: { title: string; path: string }) => {
   }
 }
 
-const updateMentionPositions = (afterIndex: number, lengthDiff: number) => {
-  mentions.value = mentions.value.map(mention => {
-    if (mention.startIndex > afterIndex) {
-      return {
-        ...mention,
-        startIndex: mention.startIndex + lengthDiff,
-        endIndex: mention.endIndex + lengthDiff
+// Add forkChat handler
+const handleForkChat = async (message: ChatMessage) => {
+  if (!currentChatId.value) return
+
+  // Get all messages up to and including the forked message
+  const messageIndex = messages.value.findIndex(m => m.id === message.id)
+  if (messageIndex === -1) return
+
+  // Clone messages up to fork point to ensure we have complete copies
+  const messagesUpToFork = messages.value.slice(0, messageIndex + 1).map(msg => ({
+    ...msg,
+    id: crypto.randomUUID(), // Give new IDs to avoid conflicts
+    timestamp: new Date().toISOString()
+  }))
+
+  try {
+    // Create the forked chat
+    const forkedChat = await forkChatInDb({
+      parentId: currentChatId.value,
+      forkMessageId: message.id,
+      messages: messagesUpToFork,
+      newTitle: `Fork of ${messages.value[0]?.content.slice(0, 30)}...`
+    })
+
+    if (forkedChat) {
+      // Load the forked chat
+      const loadedChat = await loadChat(forkedChat.id)
+      if (loadedChat) {
+        // Update local state
+        currentChatId.value = forkedChat.id
+        messages.value = loadedChat.messages
+
+        // Refresh chat history
+        chatHistory.value = await loadChatHistories()
+
+        // Scroll to bottom
+        setTimeout(() => {
+          scrollToBottom(false)
+        }, 100)
       }
     }
-    return mention
-  }).sort((a, b) => a.startIndex - b.startIndex)
+  } catch (err) {
+    console.error('Failed to fork chat:', err)
+    error.value = 'Failed to fork chat'
+  }
 }
 
-// Add scroll handling
-const { y: scrollY } = useScroll(chatContainer)
-
-const scrollToBottom = async (smooth = true) => {
-  await nextTick()
-  if (!chatContainer.value) return
-
-  chatContainer.value.scrollTo({
-    top: chatContainer.value.scrollHeight,
-    behavior: smooth ? 'smooth' : 'auto'
-  })
+// Modify the message handling to show popups
+const handleNewMessage = (message: ChatMessage) => {
+  // Empty function - we'll remove it later
 }
 
-// Watch for new messages and scroll
-watch(messages, () => {
-  scrollToBottom()
-}, { deep: true })
-
-// Watch for chat history updates
-watch(() => currentChatId.value, async (newId) => {
-  if (newId) {
-    try {
-      await loadChat(newId)
-    } catch (err) {
-      console.error('Failed to load chat:', err)
-      error.value = 'Failed to load chat'
+// Watch messages for changes
+watch(messages, (newMessages, oldMessages) => {
+  if (newMessages?.length > (oldMessages?.length || 0)) {
+    const newMessage = newMessages[newMessages.length - 1]
+    if (newMessage.role === 'assistant') {
+      handleNewMessage(newMessage)
     }
   }
-}, { immediate: true })
-
-// Also add a watcher for messages to update chat history
-watch(messages, async () => {
-  try {
-    chatHistory.value = await loadChatHistories()
-  } catch (err) {
-    console.error('Failed to refresh chat history:', err)
-  }
 }, { deep: true })
 
-const renderMarkdown = (content: string): string => {
-  const html = marked(content)
-  return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['onclick'],
-    ADD_TAGS: ['button'],
-  })
+// Add deleteChat handler
+const handleDeleteChat = async (chatId: string) => {
+  try {
+    // If we're deleting the current chat, clear it first
+    if (chatId === currentChatId.value) {
+      messages.value = []
+      currentChatId.value = null
+    }
+
+    // Delete from Supabase
+    await deleteChat(chatId)
+
+    // Refresh chat history
+    chatHistory.value = await loadChatHistories()
+  } catch (err) {
+    console.error('Failed to delete chat:', err)
+    error.value = 'Failed to delete chat'
+  }
 }
 </script>
 
@@ -559,6 +570,16 @@ const renderMarkdown = (content: string): string => {
 
 html {
   font-size: 14px;
+}
+
+/* Select element dark mode styles */
+select {
+  @apply text-gray-900 dark:text-white;
+}
+
+select option {
+  @apply text-gray-900 dark:text-white;
+  background-color: inherit;
 }
 
 /* Optional - Subtle overflow scrolling behavior */
@@ -580,9 +601,17 @@ html {
 }
 
 @keyframes gradient {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 /* Make sure interactive elements within draggable regions are still clickable */
@@ -613,46 +642,75 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Markdown Styles */
+/* Base prose styles */
 .prose {
   font-size: 0.875rem;
   line-height: 1.5;
 }
 
+/* Light mode */
+.prose {
+  color: theme('colors.gray.900');
+}
+
 .prose code {
-  @apply px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-600;
-  font-size: 0.875em;
+  background-color: theme('colors.gray.100');
+  color: theme('colors.gray.900');
 }
 
 .prose pre {
-  @apply relative rounded-lg bg-gray-800 p-4 overflow-x-auto;
-  margin: 0 !important;
+  background-color: theme('colors.gray.100');
+  color: theme('colors.gray.900');
 }
 
-.prose pre code {
-  @apply bg-transparent p-0 text-sm text-gray-200;
-  border: none !important;
+/* Dark mode */
+.dark .prose {
+  color: theme('colors.white');
 }
 
-.prose code {
-  @apply rounded bg-gray-800 px-1.5 py-0.5 text-gray-200;
+.dark .prose code {
+  color: theme('colors.white');
+  background-color: theme('colors.gray.800');
 }
 
-/* Language-specific syntax highlighting */
-.prose .language-javascript .keyword { @apply text-purple-400; }
-.prose .language-javascript .string { @apply text-green-400; }
-.prose .language-javascript .number { @apply text-yellow-400; }
-.prose .language-javascript .function { @apply text-blue-400; }
+.dark .prose pre {
+  background-color: theme('colors.gray.800');
+  color: theme('colors.white');
+}
 
-.prose .language-typescript .keyword { @apply text-purple-400; }
-.prose .language-typescript .string { @apply text-green-400; }
-.prose .language-typescript .number { @apply text-yellow-400; }
-.prose .language-typescript .function { @apply text-blue-400; }
+/* Syntax highlighting - Light */
+.prose .language-javascript .keyword {
+  @apply text-purple-700;
+}
 
-.prose .language-python .keyword { @apply text-purple-400; }
-.prose .language-python .string { @apply text-green-400; }
-.prose .language-python .number { @apply text-yellow-400; }
-.prose .language-python .function { @apply text-blue-400; }
+.prose .language-javascript .string {
+  @apply text-green-700;
+}
+
+.prose .language-javascript .number {
+  @apply text-yellow-700;
+}
+
+.prose .language-javascript .function {
+  @apply text-blue-700;
+}
+
+/* Syntax highlighting - Dark */
+.dark .prose .language-javascript .keyword {
+  @apply text-purple-300;
+}
+
+.dark .prose .language-javascript .string {
+  @apply text-green-300;
+}
+
+.dark .prose .language-javascript .number {
+  @apply text-yellow-300;
+}
+
+.dark .prose .language-javascript .function {
+  @apply text-blue-300;
+}
 
 /* Smooth transitions for focus effects */
 .transition-all {
@@ -663,5 +721,138 @@ html {
 /* Optional: Add a subtle blur when unfocused */
 .blur-subtle {
   backdrop-filter: blur(0.5px);
+}
+
+/* Dark mode specific markdown styles */
+.dark .prose {
+  color: theme('colors.gray.300');
+}
+
+.dark .prose strong {
+  color: theme('colors.gray.200');
+}
+
+.dark .prose a {
+  color: theme('colors.blue.400');
+}
+
+.dark .prose code {
+  color: theme('colors.gray.200');
+  background-color: theme('colors.gray.800');
+  border-color: theme('colors.gray.700');
+}
+
+.dark .prose pre {
+  background-color: theme('colors.gray.800');
+  border: 1px solid theme('colors.gray.700');
+}
+
+.dark .prose pre code {
+  background-color: transparent;
+  color: theme('colors.gray.200');
+}
+
+.dark .prose blockquote {
+  color: theme('colors.gray.400');
+  border-color: theme('colors.gray.700');
+  background-color: theme('colors.gray.800/50');
+}
+
+.dark .prose h1,
+.dark .prose h2,
+.dark .prose h3,
+.dark .prose h4 {
+  color: theme('colors.gray.200');
+}
+
+.dark .prose hr {
+  border-color: theme('colors.gray.700');
+}
+
+.dark .prose table {
+  border-color: theme('colors.gray.700');
+}
+
+.dark .prose thead {
+  background-color: theme('colors.gray.800');
+  color: theme('colors.gray.200');
+}
+
+.dark .prose tbody tr {
+  border-bottom-color: theme('colors.gray.700');
+}
+
+.dark .prose tbody td {
+  background-color: theme('colors.gray.900');
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background-color: theme('colors.gray.900');
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: theme('colors.gray.700');
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: theme('colors.gray.600');
+}
+
+/* Message transitions */
+.message-enter-active,
+.message-leave-active {
+  transition: all 0.3s ease;
+}
+
+.message-enter-from,
+.message-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* Message list transitions */
+.message-list-move {
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.message-list-enter-active {
+  transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+}
+
+.message-list-leave-active {
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: absolute;
+  width: 100%;
+}
+
+.message-list-enter-from {
+  opacity: 0;
+  transform: translateY(20px) scale(0.98);
+}
+
+.message-list-leave-to {
+  opacity: 0;
+  transform: translateY(-20px) scale(0.95);
+}
+
+/* Smooth scrolling for the chat container */
+.overflow-y-auto {
+  scroll-behavior: smooth;
+}
+
+/* Optional: Add a subtle fade at the top/bottom of the chat container */
+.chat-container {
+  mask-image: linear-gradient(to bottom,
+      transparent 0%,
+      black 5%,
+      black 95%,
+      transparent 100%);
 }
 </style>

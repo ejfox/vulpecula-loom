@@ -31,16 +31,20 @@ const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen
 
 <template>
   <header class="h-10 drag-handle flex items-center justify-center relative
-           border-b border-white/5 transition-all duration-1000
-           dark:bg-black/20" :class="[
-            isLoading ? 'animate-gradient-slow bg-gradient-to-r from-white/5 via-white/10 to-white/5 bg-200%'
-              : isSending ? 'animate-gradient-slower bg-gradient-to-r from-blue-500/5 via-blue-500/10 to-blue-500/5 bg-200%'
-                : 'bg-white/5 backdrop-blur-sm'
+           border-b transition-all duration-1000
+           bg-white dark:bg-gray-950 
+           border-gray-200 dark:border-gray-800/50" :class="[
+            isLoading
+              ? 'animate-gradient-slow bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 dark:from-gray-800/50 dark:via-gray-700/50 dark:to-gray-800/50 bg-200%'
+              : isSending
+                ? 'animate-gradient-slower bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 dark:from-blue-900/50 dark:via-blue-800/50 dark:to-blue-900/50 bg-200%'
+                : 'backdrop-blur-sm'
           ]">
     <!-- Left side (with traffic light spacing) -->
     <div class="absolute left-[70px] flex items-center gap-2">
       <button @click="emit('update:isChatSidebarOpen', !isChatSidebarOpen)"
-        class="p-1 text-white/40 hover:text-white/60 transition-colors" :class="{ 'text-white/80': isChatSidebarOpen }">
+        class="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+        :class="{ 'text-gray-700 dark:text-gray-300': isChatSidebarOpen }">
         <span class="sr-only">Toggle chat sidebar</span>
         <svg class="w-5 h-5 transition-transform duration-200" :class="{ 'rotate-180': !isChatSidebarOpen }" fill="none"
           viewBox="0 0 24 24" stroke="currentColor">
@@ -51,16 +55,14 @@ const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen
 
     <!-- Center-aligned content -->
     <div class="flex items-center gap-2 text-xs">
-      <span class="text-white/80">狐狸座</span>
-      <span class="text-white/40">•</span>
-      <span class="text-white/60">{{ modelName }}</span>
+      <span class="text-gray-600 dark:text-gray-400">{{ modelName }}</span>
     </div>
 
     <!-- Right-aligned content -->
     <div class="absolute right-3 flex items-center gap-2">
       <button @click="emit('update:isContextPanelOpen', !isContextPanelOpen)"
-        class="p-1 text-white/40 hover:text-white/60 transition-colors"
-        :class="{ 'text-white/80': isContextPanelOpen }">
+        class="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+        :class="{ 'text-gray-700 dark:text-gray-300': isContextPanelOpen }">
         <span class="sr-only">Toggle context panel</span>
         <svg class="w-5 h-5 transition-transform duration-200" :class="{ 'rotate-180': isContextPanelOpen }" fill="none"
           viewBox="0 0 24 24" stroke="currentColor">

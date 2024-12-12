@@ -18,7 +18,7 @@ export interface UseOpenRouterReturn {
   recentModels: ComputedRef<OpenRouterModel[]>;
   saveApiKey: (key: string) => Promise<boolean>;
   trackModelUsage: (modelId: string) => void;
-  fetchAvailableModels: () => Promise<void>;
+  fetchAvailableModels: (options?: { includeAll?: boolean }) => Promise<void>;
   getModelCost: (modelId: string) => number;
   formatModelCost: (modelId: string, rawCost?: number) => string;
   setModel: (modelId: string) => void;
@@ -30,6 +30,7 @@ export interface UseOpenRouterReturn {
   updateTemperature: (value: number) => void;
   exportChat: () => void;
   sendMessage: (content: string, includedFiles?: any[]) => Promise<void>;
+  validateApiKey: (key: string) => Promise<boolean>;
 }
 
 export function useOpenRouter(): UseOpenRouterReturn {
@@ -97,12 +98,14 @@ export function useOpenRouter(): UseOpenRouterReturn {
   }
 
   // Fetch available models from OpenRouter API
-  async function fetchAvailableModels() {
+  async function fetchAvailableModels({ includeAll = false } = {}) {
     try {
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey.value}`,
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "Vulpecula",
         },
       });
 
@@ -111,16 +114,41 @@ export function useOpenRouter(): UseOpenRouterReturn {
       }
 
       const data = await response.json();
-      availableModels.value = data.data.map((model: OpenRouterModel) => ({
-        id: model.id,
-        name: model.name,
-        description: model.description,
-        context_length: model.context_length,
-        pricing: {
-          prompt: model.pricing.prompt,
-          completion: model.pricing.completion,
-        },
-      }));
+      console.log("Raw OpenRouter response:", data);
+
+      // Map all available models
+      availableModels.value = data.data
+        .filter((model: any) => {
+          // Filter out any invalid models
+          return model.id && model.name && model.pricing;
+        })
+        .map((model: any) => ({
+          id: model.id,
+          name: model.name,
+          description: model.description,
+          context_length: model.context_length,
+          pricing: {
+            prompt: Number(model.pricing.prompt),
+            completion: Number(model.pricing.completion),
+          },
+        }));
+
+      // If we don't have any enabled models yet, enable some defaults
+      if (enabledModelIds.value.length === 0) {
+        enabledModelIds.value = [
+          "anthropic/claude-3-sonnet:beta",
+          "anthropic/claude-2.1",
+          "openai/gpt-4-turbo",
+          "openai/gpt-3.5-turbo",
+        ];
+        await store.set("enabledModelIds", enabledModelIds.value);
+      }
+
+      console.log("Processed models:", {
+        total: availableModels.value.length,
+        enabled: enabledModelIds.value.length,
+        models: availableModels.value,
+      });
     } catch (error) {
       console.error("Failed to fetch models:", error);
       availableModels.value = [];
@@ -149,17 +177,25 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
   // Track model usage
   function trackModelUsage(modelId: string) {
-    // Remove if exists and add to front
-    recentModelIds.value = [
+    console.log("Tracking usage for model:", modelId);
+    console.log("Before update:", recentModelIds.value);
+
+    // Create a new plain array with the updated model IDs
+    const updatedIds = [
       modelId,
-      ...recentModelIds.value.filter((id) => id !== modelId),
+      ...Array.from(recentModelIds.value.filter((id) => id !== modelId)),
     ];
+
     // Keep only last 10
-    if (recentModelIds.value.length > 10) {
-      recentModelIds.value = recentModelIds.value.slice(0, 10);
-    }
-    // Save to store
-    store.set("recentModelIds", recentModelIds.value);
+    const trimmedIds = updatedIds.slice(0, 10);
+
+    // Update the ref
+    recentModelIds.value = trimmedIds;
+
+    console.log("After update:", recentModelIds.value);
+
+    // Save plain array to store
+    store.set("recentModelIds", Array.from(trimmedIds));
   }
 
   // Get recent models
@@ -214,18 +250,29 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
   // Get enabled models
   const enabledModels = computed(() => {
-    return availableModels.value
-      .filter((model: OpenRouterModel) =>
-        enabledModelIds.value.includes(model.id)
-      )
-      .sort((a: OpenRouterModel, b: OpenRouterModel) => {
-        const costA = (a.pricing.prompt + a.pricing.completion) / 2;
-        const costB = (b.pricing.prompt + b.pricing.completion) / 2;
-        // Free models go to the bottom
-        if (costA === 0 && costB !== 0) return 1;
-        if (costB === 0 && costA !== 0) return -1;
-        return costB - costA;
-      });
+    if (!availableModels.value?.length) return [];
+
+    return [...availableModels.value].sort((a, b) => {
+      // First priority: Recent usage
+      const aRecentIndex = recentModelIds.value.indexOf(a.id);
+      const bRecentIndex = recentModelIds.value.indexOf(b.id);
+
+      // If either is in recent models, sort by recency
+      if (aRecentIndex !== -1 || bRecentIndex !== -1) {
+        // If both are recent, use their order
+        if (aRecentIndex !== -1 && bRecentIndex !== -1) {
+          return aRecentIndex - bRecentIndex;
+        }
+        // If only one is recent, it goes first
+        return aRecentIndex !== -1 ? -1 : 1;
+      }
+
+      // For non-recent models, sort by cost then name
+      const costA = (a.pricing.prompt + a.pricing.completion) / 2;
+      const costB = (b.pricing.prompt + b.pricing.completion) / 2;
+      if (costA !== costB) return costB - costA;
+      return a.name.localeCompare(b.name);
+    });
   });
 
   async function sendMessage(content: string, includedFiles: any[] = []) {
@@ -359,6 +406,25 @@ export function useOpenRouter(): UseOpenRouterReturn {
     // Implementation
   }
 
+  const validateApiKey = async (key: string) => {
+    try {
+      // Validate the API key format and test it
+      const isValid = key.startsWith("sk-or-") && key.length > 10;
+      if (!isValid) {
+        error.value = "Invalid API key format";
+        return false;
+      }
+
+      // Save the key if valid
+      await setApiKey(key);
+      return true;
+    } catch (err) {
+      console.error("Error validating API key:", err);
+      error.value = "Failed to validate API key";
+      return false;
+    }
+  };
+
   return {
     apiKey,
     setApiKey,
@@ -385,5 +451,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
     updateTemperature,
     exportChat,
     sendMessage,
+    validateApiKey,
   };
 }

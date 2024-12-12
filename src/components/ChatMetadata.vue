@@ -16,7 +16,7 @@
             <div>
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Total Tokens</div>
               <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {{ stats.promptTokens + stats.completionTokens || 0 }}
+                {{ (stats?.promptTokens || 0) + (stats?.completionTokens || 0) }}
               </div>
             </div>
           </div>
@@ -36,7 +36,7 @@
             <div>
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Input</div>
               <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {{ stats.promptTokens || 0 }}
+                {{ stats?.promptTokens || 0 }}
               </div>
             </div>
           </div>
@@ -53,7 +53,7 @@
             <div>
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Output</div>
               <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {{ stats.completionTokens || 0 }}
+                {{ stats?.completionTokens || 0 }}
               </div>
             </div>
           </div>
@@ -72,7 +72,7 @@
             <div>
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Cost</div>
               <div class="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                {{ stats.cost ? formatModelCost('', stats.cost) : '$0.0000' }}
+                {{ stats?.cost ? formatModelCost('', stats.cost) : '$0.0000' }}
               </div>
             </div>
           </div>

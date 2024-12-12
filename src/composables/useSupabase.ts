@@ -1,8 +1,16 @@
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { createClient } from "@supabase/supabase-js";
 import type { Ref, ComputedRef } from "vue";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChatHistory, ChatMessage, ChatMetadata } from "../types";
+import type {
+  Chat,
+  NewChat,
+  ChatForkOptions,
+  Thread,
+  ThreadOptions,
+} from "../types/chat";
+import { useStore } from "../lib/store";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -25,20 +33,30 @@ export interface UseSupabaseReturn {
   loadChatHistories: () => Promise<ChatHistory[]>;
   deleteChat: (id: string) => Promise<void>;
   deleteAllChats: () => Promise<void>;
+  updateChatMetadata: (
+    chatId: string,
+    metadata: Partial<ChatMetadata>
+  ) => Promise<Chat | null>;
+  forkChat: (options: ChatForkOptions) => Promise<Chat | null>;
+  generateChatSummary: (
+    chatId: string,
+    messages: ChatMessage[]
+  ) => Promise<Chat | null>;
+  createThread: (options: ThreadOptions) => Promise<Thread | null>;
+  addChatToThread: (chatId: string, threadId: string) => Promise<boolean>;
+  getThreadChats: (threadId: string) => Promise<Chat[]>;
+  removeChatFromThread: (chatId: string) => Promise<boolean>;
 }
 
 export function useSupabase() {
+  const store = useStore();
   const isConfigured = computed(() => {
     const hasUrl = !!import.meta.env.VITE_SUPABASE_URL;
     const hasKey = !!import.meta.env.VITE_SUPABASE_KEY;
     return hasUrl && hasKey;
   });
 
-  const hasValidSupabaseConfig = computed(() => {
-    return Boolean(
-      import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_KEY
-    );
-  });
+  const hasValidSupabaseConfig = ref(true);
 
   async function saveChatHistory(
     history: Omit<ChatHistory, "id" | "created_at" | "updated_at">
@@ -180,6 +198,235 @@ export function useSupabase() {
     }
   }
 
+  const updateChatMetadata = async (
+    chatId: string,
+    metadata: Partial<ChatMetadata>
+  ) => {
+    try {
+      const { data, error } = await supabase
+        .from("vulpeculachats")
+        .update({
+          metadata: {
+            ...metadata,
+            lastUpdated: new Date().toISOString(),
+          },
+        })
+        .eq("id", chatId)
+        .select();
+
+      if (error) throw error;
+      return data?.[0];
+    } catch (err) {
+      console.error("Failed to update chat metadata:", err);
+      return null;
+    }
+  };
+
+  const forkChat = async ({
+    parentId,
+    forkMessageId,
+    messages,
+    newTitle,
+  }: ChatForkOptions): Promise<Chat | null> => {
+    try {
+      // Get parent chat to update its childIds
+      const { data: parentChat } = await supabase
+        .from("vulpeculachats")
+        .select("*")
+        .eq("id", parentId)
+        .single();
+
+      if (!parentChat) throw new Error("Parent chat not found");
+
+      // Create new chat with forked messages
+      const newChat: NewChat = {
+        title: newTitle || `Fork of ${parentChat.title || "Untitled Chat"}`,
+        messages,
+        model: parentChat.model,
+        metadata: {
+          lastModel: parentChat.metadata.lastModel,
+          lastUpdated: new Date().toISOString(),
+          messageCount: messages.length,
+          fork: {
+            parentId,
+            forkMessageId,
+            forkDepth: (parentChat.metadata.fork?.forkDepth || 0) + 1,
+            childIds: [],
+          },
+        },
+      };
+
+      // Insert new chat
+      const { data: createdChat, error: insertError } = await supabase
+        .from("vulpeculachats")
+        .insert(newChat)
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Update parent chat's childIds
+      const updatedParentMetadata = {
+        ...parentChat.metadata,
+        fork: {
+          ...(parentChat.metadata.fork || {}),
+          childIds: [
+            ...(parentChat.metadata.fork?.childIds || []),
+            createdChat.id,
+          ],
+        },
+      };
+
+      await updateChatMetadata(parentId, updatedParentMetadata);
+
+      return createdChat;
+    } catch (err) {
+      console.error("Failed to fork chat:", err);
+      return null;
+    }
+  };
+
+  const generateChatSummary = async (
+    chatId: string,
+    messages: ChatMessage[]
+  ) => {
+    try {
+      // TODO: Call OpenAI/other LLM to generate summary
+      const summary = "Generated summary...";
+      const autoTitle = "Generated title...";
+
+      return await updateChatMetadata(chatId, {
+        summary,
+        autoTitle,
+        summaryLastUpdated: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Failed to generate chat summary:", err);
+      return null;
+    }
+  };
+
+  const createThread = async ({
+    name,
+    description,
+    chat_ids = [],
+  }: ThreadOptions): Promise<Thread | null> => {
+    try {
+      const thread: Thread = {
+        id: crypto.randomUUID(),
+        name,
+        description,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        chat_ids,
+      };
+
+      // Update all chats to be part of this thread
+      if (chat_ids.length > 0) {
+        const { error: updateError } = await supabase
+          .from("vulpeculachats")
+          .update({ thread: thread.id })
+          .in("id", chat_ids);
+
+        if (updateError) throw updateError;
+      }
+
+      return thread;
+    } catch (err) {
+      console.error("Failed to create thread:", err);
+      return null;
+    }
+  };
+
+  const addChatToThread = async (chatId: string, threadId: string) => {
+    try {
+      // Update chat's thread ID
+      const { error: updateError } = await supabase
+        .from("vulpeculachats")
+        .update({ thread: threadId })
+        .eq("id", chatId);
+
+      if (updateError) throw updateError;
+
+      // Update chat's metadata
+      const { data: thread } = await supabase
+        .from("vulpeculachats")
+        .select("title, metadata")
+        .eq("id", threadId)
+        .single();
+
+      if (thread) {
+        await updateChatMetadata(chatId, {
+          thread: {
+            name: thread.title || "Untitled Thread",
+            description: thread.metadata?.description,
+          },
+        });
+      }
+
+      return true;
+    } catch (err) {
+      console.error("Failed to add chat to thread:", err);
+      return false;
+    }
+  };
+
+  const getThreadChats = async (threadId: string): Promise<Chat[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("vulpeculachats")
+        .select("*")
+        .eq("thread", threadId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error("Failed to get thread chats:", err);
+      return [];
+    }
+  };
+
+  const removeChatFromThread = async (chatId: string) => {
+    try {
+      const { error } = await supabase
+        .from("vulpeculachats")
+        .update({
+          thread: null,
+          metadata: supabase.raw(`
+            jsonb_set(
+              metadata,
+              '{thread}',
+              'null'::jsonb
+            )
+          `),
+        })
+        .eq("id", chatId);
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Failed to remove chat from thread:", err);
+      return false;
+    }
+  };
+
+  async function deleteChat(id: string) {
+    try {
+      console.log("Deleting chat:", id);
+      const { error } = await supabase
+        .from("vulpeculachats")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      console.log("Chat deleted successfully");
+    } catch (error) {
+      console.error("Error in deleteChat:", error);
+      throw error;
+    }
+  }
+
   return {
     supabase,
     isConfigured,
@@ -188,6 +435,14 @@ export function useSupabase() {
     updateChatHistory,
     loadChatHistory,
     loadChatHistories,
+    deleteChat,
     deleteAllChats,
+    updateChatMetadata,
+    forkChat,
+    generateChatSummary,
+    createThread,
+    addChatToThread,
+    getThreadChats,
+    removeChatFromThread,
   };
 }

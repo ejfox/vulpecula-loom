@@ -1,36 +1,30 @@
-import Store from "electron-store";
+import type { StoreSchema } from "../../electron/main/store";
 
-interface StoreSchema {
-  "openrouter-api-key": string;
-  "ai-chat-model": string;
-  theme: "system" | "light" | "dark";
-  "obsidian-vault-path": string;
-  rememberWindowState: boolean;
-  minimizeToTray: boolean;
-  showNotifications: boolean;
-  playSounds: boolean;
-  showBadgeCount: boolean;
-  showProgressBar: boolean;
-  enabledModelIds: string[];
-  recentModelIds: string[];
+function checkElectron() {
+  if (!window.electron?.store) {
+    throw new Error("Electron store API not available");
+  }
 }
 
 export function useStore() {
   async function get<K extends keyof StoreSchema>(
     key: K
   ): Promise<StoreSchema[K]> {
-    return window.electron.ipcRenderer.invoke("store-get", key);
+    checkElectron();
+    return window.electron.store.get(key);
   }
 
   async function set<K extends keyof StoreSchema>(
     key: K,
     value: StoreSchema[K]
   ): Promise<boolean> {
-    return window.electron.ipcRenderer.invoke("store-set", key, value);
+    checkElectron();
+    return window.electron.store.set(key, value);
   }
 
   async function clear(): Promise<boolean> {
-    return window.electron.ipcRenderer.invoke("store-clear");
+    checkElectron();
+    return window.electron.store.clear();
   }
 
   return {

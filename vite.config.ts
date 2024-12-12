@@ -17,61 +17,26 @@ export default defineConfig(({ command }) => {
       vue(),
       electron([
         {
-          // Main-Process entry file of the Electron App.
+          // Main process entry file
           entry: "electron/main/index.ts",
-          onstart({ startup }) {
-            if (process.env.VSCODE_DEBUG) {
-              console.log("[startup] Electron App");
-            } else {
-              startup();
-            }
-          },
           vite: {
             build: {
-              sourcemap,
-              minify: isBuild,
               outDir: "dist-electron/main",
-              rollupOptions: {
-                external: Object.keys(
-                  "dependencies" in pkg ? pkg.dependencies : {}
-                ),
-                preserveEntrySignatures: "strict",
-                input: {
-                  index: resolve(__dirname, "electron/main/index.ts"),
-                },
-              },
             },
           },
         },
         {
           entry: "electron/preload/index.ts",
-          onstart({ reload }) {
-            reload();
-          },
           vite: {
             build: {
-              sourcemap: sourcemap ? "inline" : undefined,
-              minify: isBuild,
               outDir: "dist-electron/preload",
-              rollupOptions: {
-                external: Object.keys(
-                  "dependencies" in pkg ? pkg.dependencies : {}
-                ),
-                preserveEntrySignatures: "strict",
-                input: {
-                  index: resolve(__dirname, "electron/preload/index.ts"),
-                },
-              },
-              lib: {
-                entry: "electron/preload/index.ts",
-                formats: ["cjs"],
-                fileName: () => "index.js",
-              },
             },
           },
         },
       ]),
-      renderer(),
+      renderer({
+        nodeIntegration: true,
+      }),
     ],
     server:
       process.env.VSCODE_DEBUG &&
@@ -88,6 +53,6 @@ export default defineConfig(({ command }) => {
         "@": resolve(__dirname, "./src"),
       },
     },
-    base: process.env.ELECTRON == "true" ? "./" : ".",
+    base: process.env.ELECTRON_RENDERER_URL ? "./" : undefined,
   };
 });
