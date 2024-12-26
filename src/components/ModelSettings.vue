@@ -153,61 +153,85 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import type { OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import Fuse from 'fuse.js'
 
 const store = useStore()
 
-interface Model {
-  id: string
-  name?: string
-  description?: string
-  context_length?: number
-  pricing?: {
-    prompt: string
-    completion: string
-  }
+interface Props {
+  availableModels: OpenRouterModel[];
 }
 
-const props = defineProps<{
-  availableModels: Model[]
-}>()
+const props = defineProps<Props>();
 
-// Search and sort state
+const pinnedModels = ref<OpenRouterModel[]>([])
 const searchQuery = ref('')
 const sortBy = ref<'name' | 'promptCost' | 'completionCost' | 'totalCost' | 'contextLength'>('name')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 
-// Load pinned models from store
-const pinnedModels = ref<Model[]>([])
-
-// Initialize pinned models from store
+// Initialize pinned models
 const initializePinnedModels = async () => {
-  const storedPinnedModels = await store.get('pinned-models') as string[] || []
-  pinnedModels.value = props.availableModels.filter(model =>
-    storedPinnedModels.includes(model.id)
-  )
+  const pinnedIds = await window.electron?.store.get('pinned-models') || []
+  pinnedModels.value = props.availableModels.filter(model => pinnedIds.includes(model.id))
 }
 
-// Save pinned models to store
-const savePinnedModels = async () => {
-  await store.set('pinned-models', pinnedModels.value.map(model => model.id))
-}
-
-// Pin/unpin methods
+// Pin/unpin model functions
 const pinModel = async (modelId: string) => {
-  if (pinnedModels.value.length >= 9) return
   const model = props.availableModels.find(m => m.id === modelId)
-  if (model && !pinnedModels.value.some(m => m.id === modelId)) {
-    pinnedModels.value.push(model)
-    await savePinnedModels()
-  }
+  if (!model) return
+
+  const pinnedIds = await window.electron?.store.get('pinned-models') || []
+  await window.electron?.store.set('pinned-models', [...pinnedIds, modelId])
+  pinnedModels.value.push(model)
 }
 
 const unpinModel = async (modelId: string) => {
-  pinnedModels.value = pinnedModels.value.filter(m => m.id !== modelId)
-  await savePinnedModels()
+  const pinnedIds = await window.electron?.store.get('pinned-models') || []
+  await window.electron?.store.set('pinned-models', pinnedIds.filter(id => id !== modelId))
+  pinnedModels.value = pinnedModels.value.filter(model => model.id !== modelId)
 }
+
+// Get unpinned models
+const unpinnedModels = computed(() => {
+  return props.availableModels.filter(
+    model => !pinnedModels.value.some(m => m.id === model.id)
+  )
+})
+
+// Sort and filter models
+const filteredModels = computed(() => {
+  const models = [...unpinnedModels.value]
+  models.sort((a: OpenRouterModel, b: OpenRouterModel) => {
+    const aValue = getSortValue(a)
+    const bValue = getSortValue(b)
+
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortDirection.value === 'asc' ?
+        aValue.localeCompare(bValue) :
+        bValue.localeCompare(aValue)
+    }
+
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortDirection.value === 'asc' ?
+        aValue - bValue :
+        bValue - aValue
+    }
+
+    return 0
+  })
+  return models
+})
+
+// Group models by provider
+const sortedGroupedModels = computed(() => {
+  return filteredModels.value.reduce((acc: Record<string, OpenRouterModel[]>, model: OpenRouterModel) => {
+    const [provider] = model.id.split('/')
+    if (!acc[provider]) acc[provider] = []
+    acc[provider].push(model)
+    return acc
+  }, {})
+})
 
 // Fuzzy search configuration
 const fuseOptions = {
@@ -217,7 +241,7 @@ const fuseOptions = {
 }
 
 // Sorting functions
-const getSortValue = (model: Model) => {
+const getSortValue = (model: OpenRouterModel) => {
   switch (sortBy.value) {
     case 'name':
       return model.name || getModelDisplayName(model.id)
@@ -234,45 +258,6 @@ const getSortValue = (model: Model) => {
       return ''
   }
 }
-
-// Group, filter and sort models
-const sortedGroupedModels = computed(() => {
-  const unpinnedModels = props.availableModels.filter(
-    model => !pinnedModels.value.some(m => m.id === model.id)
-  )
-
-  // Apply search if query exists
-  let filteredModels = unpinnedModels
-  if (searchQuery.value.trim()) {
-    const fuse = new Fuse(unpinnedModels, fuseOptions)
-    const searchResults = fuse.search(searchQuery.value)
-    filteredModels = searchResults.map(result => result.item)
-  }
-
-  // Sort models
-  filteredModels.sort((a, b) => {
-    const aValue = getSortValue(a)
-    const bValue = getSortValue(b)
-
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      return sortDirection.value === 'asc'
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue)
-    }
-
-    return sortDirection.value === 'asc'
-      ? (aValue as number) - (bValue as number)
-      : (bValue as number) - (aValue as number)
-  })
-
-  // Group sorted models by provider
-  return filteredModels.reduce((acc, model) => {
-    const [provider] = model.id.split('/')
-    if (!acc[provider]) acc[provider] = []
-    acc[provider].push(model)
-    return acc
-  }, {} as Record<string, Model[]>)
-})
 
 // Helper functions
 const getModelDisplayName = (modelId: string): string => {

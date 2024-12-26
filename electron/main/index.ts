@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow } from "electron";
 import path from "node:path";
-import { setupStoreHandlers } from "./store";
+import { setupIpcHandlers } from "../ipc";
 
 // The built directory structure
 //
@@ -20,12 +20,6 @@ process.env.VITE_PUBLIC = app.isPackaged
 let win: BrowserWindow | null = null;
 const preload = path.join(__dirname, "../preload/index.js");
 
-function setupShellHandlers() {
-  ipcMain.handle("shell-open-external", async (_event, url) => {
-    return shell.openExternal(url);
-  });
-}
-
 async function createWindow() {
   win = new BrowserWindow({
     width: 1200,
@@ -34,13 +28,12 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       preload,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
-  // Set up handlers before loading the window
-  setupStoreHandlers();
-  setupShellHandlers();
+  // Set up all IPC handlers in one place
+  setupIpcHandlers();
 
   // Add CSP headers for development
   if (process.env.VITE_DEV_SERVER_URL) {

@@ -7,52 +7,57 @@ import pkg from "./package.json";
 import { resolve } from "path";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command }) => {
-  const isServe = command === "serve";
-  const isBuild = command === "build";
-  const sourcemap = isServe || !!process.env.VSCODE_DEBUG;
-
-  return {
-    plugins: [
-      vue(),
-      electron([
-        {
-          // Main process entry file
-          entry: "electron/main/index.ts",
-          vite: {
-            build: {
-              outDir: "dist-electron/main",
+export default defineConfig({
+  plugins: [
+    vue(),
+    electron([
+      {
+        // Main process entry file
+        entry: "src/electron/main.ts",
+        onstart(options) {
+          options.startup();
+        },
+        vite: {
+          build: {
+            outDir: "dist-electron/main",
+            rollupOptions: {
+              output: {
+                entryFileNames: "index.js",
+              },
             },
           },
         },
-        {
-          entry: "electron/preload/index.ts",
-          vite: {
-            build: {
-              outDir: "dist-electron/preload",
-            },
-          },
-        },
-      ]),
-      renderer({
-        nodeIntegration: true,
-      }),
-    ],
-    server:
-      process.env.VSCODE_DEBUG &&
-      (() => {
-        const url = new URL(pkg.debug.env.VITE_DEV_SERVER_URL);
-        return {
-          host: url.hostname,
-          port: +url.port,
-        };
-      })(),
-    clearScreen: false,
-    resolve: {
-      alias: {
-        "@": resolve(__dirname, "./src"),
       },
+      {
+        entry: "src/electron/preload.ts",
+        onstart(options) {
+          options.reload();
+        },
+        vite: {
+          build: {
+            outDir: "dist-electron/preload",
+            rollupOptions: {
+              output: {
+                entryFileNames: "index.js",
+              },
+            },
+          },
+        },
+      },
+    ]),
+    renderer(),
+  ],
+  server: process.env.VSCODE_DEBUG
+    ? {
+        host: new URL(pkg.debug.env.VITE_DEV_SERVER_URL).hostname,
+        port: Number(new URL(pkg.debug.env.VITE_DEV_SERVER_URL).port),
+      }
+    : undefined,
+  clearScreen: false,
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "./src"),
     },
-    base: process.env.ELECTRON_RENDERER_URL ? "./" : undefined,
-  };
+  },
+  base: process.env.ELECTRON_RENDERER_URL ? "./" : undefined,
 });

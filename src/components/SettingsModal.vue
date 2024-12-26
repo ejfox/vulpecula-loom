@@ -4,6 +4,9 @@ import { useStore } from '../lib/store'
 import { useOpenRouter } from '../composables/useOpenRouter'
 import ModelSettings from './ModelSettings.vue'
 
+// Add this near the top of the script section
+const { shell, ipc } = window.electron || {}
+
 // Add currentTab state
 const currentTab = ref('general')
 
@@ -48,6 +51,8 @@ const preferences = ref({
 const tempApiKey = ref('')
 const error = ref<string | null>(null)
 const isLoading = ref(true)
+const obsidianVaultPath = ref('')
+const isSelectingVault = ref(false)
 
 // Load preferences from store with retry mechanism
 const loadPreferences = async () => {
@@ -60,7 +65,8 @@ const loadPreferences = async () => {
       showBadgeCount,
       showProgressBar,
       showOnlyPinnedModels,
-      storedKey
+      storedKey,
+      vaultPath
     ] = await Promise.all([
       store.get('remember-window-state'),
       store.get('minimize-to-tray'),
@@ -69,7 +75,8 @@ const loadPreferences = async () => {
       store.get('show-badge-count'),
       store.get('show-progress-bar'),
       store.get('show-only-pinned-models'),
-      store.get('api-key')
+      store.get('api-key'),
+      store.get('obsidian-vault-path')
     ])
 
     preferences.value = {
@@ -82,7 +89,9 @@ const loadPreferences = async () => {
       showOnlyPinnedModels: Boolean(showOnlyPinnedModels ?? false)
     }
 
-    tempApiKey.value = storedKey || ''
+    // Cast the stored key to string since we know it should be a string
+    tempApiKey.value = (storedKey as string) || ''
+    obsidianVaultPath.value = (vaultPath as string) || ''
   } catch (err) {
     console.error('Error loading preferences:', err)
     error.value = err instanceof Error ? err.message : 'Failed to load preferences'
@@ -142,12 +151,52 @@ function close() {
   emit('update:modelValue', false)
 }
 
-function handleApiKeyChange(event: Event) {
-  const key = (event.target as HTMLInputElement).value
-  tempApiKey.value = key
-  emit('validate-api-key', key)
-  saveApiKey(key)
+async function handleApiKeyChange(event: Event) {
+  try {
+    const key = (event.target as HTMLInputElement).value
+    tempApiKey.value = key
+
+    // Save to store first
+    await store.set('api-key', key)
+
+    // Then validate and update the OpenRouter composable
+    await emit('validate-api-key', key)
+    await saveApiKey(key)
+  } catch (err) {
+    console.error('Failed to save API key:', err)
+    error.value = 'Failed to save API key'
+  }
 }
+
+const selectObsidianVault = async () => {
+  try {
+    isSelectingVault.value = true;
+
+    if (!window.electron?.ipc) {
+      throw new Error("IPC not available");
+    }
+
+    const result = await window.electron.ipc.invoke("select-folder");
+
+    if (result.canceled || !result.filePaths?.[0]) {
+      return;
+    }
+
+    const vaultPath = result.filePaths[0];
+    obsidianVaultPath.value = vaultPath;
+
+    // Add logging to debug store setting
+    console.log('Setting vault path:', vaultPath);
+    await store.set("obsidian-vault-path", vaultPath);
+    console.log('Vault path set successfully');
+
+  } catch (err) {
+    console.error("Failed to select Obsidian vault:", err);
+    error.value = err instanceof Error ? err.message : "Failed to select vault";
+  } finally {
+    isSelectingVault.value = false;
+  }
+};
 </script>
 
 <template>
@@ -220,8 +269,30 @@ function handleApiKeyChange(event: Event) {
                 <input :value="tempApiKey" @input="handleApiKeyChange" type="password"
                   class="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                 <p class="text-xs text-gray-500 dark:text-gray-400">
-                  Get your API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener"
+                  Get your API key from <a href="#" @click.prevent="shell?.openExternal?.('https://openrouter.ai/keys')"
                     class="text-blue-500 hover:text-blue-400">openrouter.ai/keys</a>
+                </p>
+              </div>
+            </section>
+
+            <!-- Obsidian Integration -->
+            <section class="space-y-4">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Obsidian Integration</h3>
+              <div class="space-y-3">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Vault Location
+                </label>
+                <div class="flex gap-2">
+                  <input :value="obsidianVaultPath" readonly type="text"
+                    placeholder="Select your Obsidian vault folder..."
+                    class="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                  <button @click="selectObsidianVault" :disabled="isSelectingVault"
+                    class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {{ isSelectingVault ? 'Selecting...' : 'Select Folder' }}
+                  </button>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  Select your Obsidian vault folder to enable file linking and search
                 </p>
               </div>
             </section>
@@ -280,7 +351,8 @@ function handleApiKeyChange(event: Event) {
 
           <!-- Models Tab -->
           <div v-if="currentTab === 'models'" class="space-y-8">
-            <ModelSettings :available-models="availableModels" />
+            <ModelSettings :available-models="availableModels"
+              :show-only-pinned-models="preferences.showOnlyPinnedModels" />
           </div>
         </template>
       </div>

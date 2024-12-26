@@ -1,38 +1,66 @@
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import type { ChatMessageProps } from '../types'
+import ChatCodeblock from './ChatCodeblock.vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { onMounted, onUnmounted } from 'vue'
 
-interface MessageProps {
+const props = defineProps<{
   message: {
     id?: string
-    role: 'user' | 'assistant'
+    role: 'system' | 'user' | 'assistant'
     content: string
     timestamp: string
     model?: string
-    tokens?: {
-      total: number
-      prompt: number
-      completion: number
-    }
-    cost?: number
+    tokens?: any
+    cost?: any
+    includedFiles?: any[]
   }
   modelName: string
   index: number
   currentChatId: string | null
-  formatModelCost: (model: string, cost: number) => string
-}
+  isLoading?: boolean
+  showActions?: boolean
+  formatModelCost?: (cost: any) => string
+}>()
 
-const props = defineProps<MessageProps>()
-const emit = defineEmits(['copy', 'delete', 'fork'])
+const emit = defineEmits<{
+  (e: 'copy', message: any): void
+  (e: 'delete', message: any): void
+  (e: 'fork', message: any): void
+  (e: 'open-actions', message: any): void
+}>()
 
-const renderMarkdown = (content: string): string => {
-  const html = marked(content)
-  return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['onclick'],
-    ADD_TAGS: ['button'],
-  })
-}
+// Process markdown content to separate regular content and code blocks
+const processedContent = computed(() => {
+  console.log('Original message content:', props.message.content)
+
+  // Create a custom tokenizer
+  const tokens = marked.lexer(props.message.content)
+  const parts = []
+
+  for (const token of tokens) {
+    if (token.type === 'code') {
+      parts.push({
+        type: 'code',
+        code: token.text,
+        language: token.lang || ''
+      })
+    } else {
+      const html = marked.parser([token])
+      parts.push({
+        type: 'content',
+        html: DOMPurify.sanitize(html, {
+          ADD_ATTR: ['onclick'],
+          ADD_TAGS: ['button'],
+        })
+      })
+    }
+  }
+
+  console.log('Final processed parts:', parts)
+  return parts
+})
 
 // Add keyboard shortcut handling
 const handleKeydown = (e: KeyboardEvent) => {
@@ -76,8 +104,8 @@ onUnmounted(() => {
       </div>
       <div class="flex items-center gap-1.5 flex-shrink-0">
         <time class="font-mono">{{ new Date(message.timestamp).toLocaleTimeString([], {
-          hour: '2-digit', minute:
-            '2-digit'
+          hour: '2-digit',
+          minute: '2-digit'
         }) }}</time>
 
         <!-- Message Actions -->
@@ -109,11 +137,16 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Message Content - Tighter padding -->
+    <!-- Message Content -->
     <div class="p-1.5 sm:p-2 rounded-md prose prose-sm max-w-none" :class="message.role === 'user'
       ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-900 dark:text-white'
       : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'">
-      <div v-html="renderMarkdown(message.content)" class="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0" />
+      <template v-for="(part, index) in processedContent" :key="index">
+        <!-- Regular content -->
+        <div v-if="part.type === 'content'" v-html="part.html" class="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0" />
+        <!-- Code block -->
+        <ChatCodeblock v-else :code="String(part.code)" :language="part.language" class="my-2" />
+      </template>
     </div>
   </div>
 </template>
@@ -125,8 +158,8 @@ onUnmounted(() => {
 }
 
 :deep(.prose pre) {
-  margin: 0.5rem 0;
-  padding: 0.5rem;
+  margin: 0;
+  padding: 0;
 }
 
 :deep(.prose p) {
@@ -143,7 +176,7 @@ onUnmounted(() => {
   margin: 0.25rem 0;
 }
 
-:deep(.prose code) {
+:deep(.prose code:not(pre code)) {
   font-size: 0.8125rem;
   padding: 0.125rem 0.25rem;
 }

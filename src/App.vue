@@ -40,7 +40,7 @@
             <ChatMetadata :stats="chatStats" @export="exportChat" />
 
             <!-- API Key Warning -->
-            <ApiKeyWarning :has-valid-key="hasValidKey" :saving-key="savingKey" @save-api-key="saveApiKey" />
+            <ApiKeyWarning :has-valid-key="openRouter.hasValidKey" :saving-key="isLoading" @save-api-key="setApiKey" />
 
             <!-- Supabase Warning -->
             <div v-if="!hasValidSupabaseConfig"
@@ -50,28 +50,24 @@
               </div>
             </div>
 
-            <!-- Chat Messages -->
-            <section ref="chatContainer"
-              class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-gray-950">
-              <div class="p-4 space-y-3">
-                <TransitionGroup name="message-list" tag="div" class="space-y-3" :duration="300"
-                  move-class="message-move">
-                  <ChatMessage v-for="(message, index) in messages"
-                    :key="message.id || `msg-${currentChatId}-${index}-${message.timestamp}`" :message="message"
-                    :model-name="modelName" :index="index" :current-chat-id="currentChatId"
-                    :format-model-cost="formatModelCost" @copy="copyMessage" @delete="deleteMessage"
-                    @fork="handleForkChat" />
-                </TransitionGroup>
-              </div>
-            </section>
+            <!-- Messages Container -->
+            <div ref="chatContainerRef" class="flex-1 overflow-y-auto p-4 space-y-4">
+              <ChatMessage v-for="(message, index) in messages"
+                :key="message.id || `msg-${currentChatId}-${index}-${message.timestamp}`" :message="message"
+                :model-name="modelName" :index="index" :current-chat-id="currentChatId"
+                :is-loading="isLoading && index === messages.length - 1"
+                :show-actions="activeMessageActions === (message.id || `msg-${currentChatId}-${index}-${message.timestamp}`)"
+                :format-model-cost="formatModelCost" :ref="el => updateMessageElement(index, el)"
+                @open-actions="openMessageActions(message, index)" @copy="copyMessage" @delete="deleteMessage"
+                @fork="handleForkChat" />
+            </div>
 
-            <!-- Message Input -->
-            <ChatInput :is-loading="isLoading" :has-valid-key="hasValidKey" :show-mention-popup="showMentionPopup"
-              :is-searching-files="isSearchingFiles" :has-obsidian-vault="hasObsidianVault"
-              :obsidian-search-results="obsidianSearchResults"
-              @submit="({ message, includedFiles }) => sendMessage(message, includedFiles)"
-              @mention-popup="(show) => showMentionPopup = show" @obsidian-link="handleObsidianLink"
-              @input="(query) => searchQuery = query" />
+            <!-- Input Area -->
+            <ChatInput v-model="newMessage" :is-loading="isSending" :has-valid-key="hasValidKey"
+              :show-mention-popup="showMentionPopup" :is-searching-files="isSearchingFiles"
+              :has-obsidian-vault="hasObsidianVault" :obsidian-search-results="obsidianSearchResults"
+              @send="handleSendMessage" @mention-popup="(show) => showMentionPopup = show"
+              @obsidian-link="handleObsidianLink" @input="(query) => searchQuery = query" />
           </main>
         </div>
       </div>
@@ -107,6 +103,27 @@ import { useStore } from './lib/store'
 import { useTheme } from './composables/useTheme'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { useAnimeAnimations } from './composables/useAnimeAnimations'
+
+// Import ALL types from the central system
+import type {
+  Chat,
+  IncludedFile,
+  Mention,
+  UIPreferences,
+  StoreSchema,
+  ObsidianFile,
+  ScrollConfig,
+  StaggerConfig,
+  AnimationConfig,
+  ObsidianLinkParams,
+  IpcChannels,
+  ElectronAPI,
+} from './types'
+
+// Import composable types
+import type { UseOpenRouterReturn } from './composables/useOpenRouter'
+import type { UseSupabaseReturn } from './composables/useSupabase'
 
 // Components
 import TitleBar from './components/TitleBar.vue'
@@ -122,102 +139,112 @@ import ApiKeyWarning from './components/ApiKeyWarning.vue'
 // Initialize store
 const store = useStore()
 
-// Core chat functionality
+// Initialize composables
+const { scrollTimeline, createScrollObserver } = useAnimeAnimations()
+const openRouter = useOpenRouter()
+const aiChat = useAIChat()
+const supabaseClient = useSupabase()
+
+// Destructure values from composables
 const {
-  apiKey,
-  setApiKey,
-  hasValidKey,
   messages,
   isLoading,
   error,
   currentModel,
   modelName,
-  sendMessage,
-  setModel,
   currentChatId,
-  loadChat,
-  clearChat,
+  temperature,
   chatStats,
+  availableModels,
+  enabledModels,
+  sendMessage,
+  clearChat,
+  setModel,
+  loadChat,
+  updateTemperature,
   exportChat,
+} = aiChat
+
+// Computed values
+const hasValidKey = computed(() => openRouter.hasValidKey.value)
+
+// Handle electron IPC calls
+const invokeElectron = async <T extends keyof IpcChannels>(
+  channel: T,
+  ...args: Parameters<IpcChannels[T]>
+): Promise<ReturnType<IpcChannels[T]>> => {
+  if (!window.electron?.ipc?.invoke) {
+    throw new Error('Electron IPC not available')
+  }
+  return window.electron.ipc.invoke(channel, ...args)
+}
+
+// Handle external links
+const openExternal = async (url: string) => {
+  if (window.electron?.shell?.openExternal) {
+    await window.electron.shell.openExternal(url)
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
+// OpenRouter functionality (just for API key management and model tracking)
+const {
+  setApiKey,
+  recentModels,
   validateApiKey,
-  formatModelCost,
-  availableModels
-} = useOpenRouter()
+  formatModelCost
+} = openRouter
 
 // Chat history
 const {
-  loadChatHistories,
-  hasValidSupabaseConfig,
-  forkChat: forkChatInDb,
   supabase,
+  isConfigured,
+  hasValidSupabaseConfig,
+  saveChatHistory,
+  updateChatHistory,
+  loadChatHistory,
+  loadChatHistories,
   deleteChat,
-  saveChatHistory
+  deleteAllChats,
+  updateChatMetadata,
+  forkChat: forkChatInDb,
+  generateChatSummary,
+  createThread,
+  addChatToThread,
+  getThreadChats,
+  removeChatFromThread
 } = useSupabase()
 
-// Types
-interface ChatMessage {
-  id?: string  // Optional since some messages might not have IDs yet
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: string  // ISO string from the database
-  model?: string
-  tokens?: {
-    total: number
-    prompt: number
-    completion: number
-  }
-  cost?: number
-}
-
-interface ChatMetadata {
-  lastModel: string
-  lastUpdated: string
-  messageCount: number
-}
-
-interface ChatHistoryItem {
-  id: string
-  title: string | null
-  messages: ChatMessage[]
-  model: string
-  metadata: ChatMetadata
-  created_at: string
-  updated_at: string
-  user_id?: string
-  thread?: string | null
-}
-
-interface Mention {
-  startIndex: number
-  endIndex: number
-  file: {
-    title: string
-    path: string
-  }
-}
-
-interface IncludedFile {
-  title: string
-  path: string
-  content: string
-}
-
-// Update ref type
-const chatHistory = ref<ChatHistoryItem[]>([])
+// Add refs with proper typing from central system
+const messageElements = ref<(HTMLElement | null)[]>([])
+const mentions = ref<Mention[]>([])
+const messageIncludedFiles = ref<IncludedFile[]>([])
+const chatHistory = ref<Chat[]>([])
 
 // UI State
 const isSending = ref(false)
 const isSettingsOpen = ref(false)
 const isChatSidebarOpen = ref(true)
 const isContextPanelOpen = ref(false)
-const theme = ref('dark')
+const theme = ref<UIPreferences['theme']>('dark')
 const showProgressBar = ref(true)
+
+// State
+const preferences = ref<UIPreferences>({
+  showOnlyPinnedModels: false,
+  theme: 'dark',
+  showProgressBar: true
+})
+
+const pinnedModels = ref<string[]>([])
+const apiKeys = ref<Record<string, string>>({})
 
 // Input handling
 const newMessage = ref('')
 const tempApiKey = ref('')
 const savingKey = ref(false)
-const chatContainer = ref<HTMLElement | null>(null)
+const chatContainerRef = ref<HTMLElement | null>(null)
 
 // Breakpoint detection
 const breakpoints = useBreakpoints({
@@ -238,23 +265,101 @@ const {
 
 const showMentionPopup = ref(false)
 const mentionStartIndex = ref(-1)
-const messageIncludedFiles = ref<IncludedFile[]>([])
-const mentions = ref<Mention[]>([])
 
 // Load initial data
 const { isDark } = useTheme()
 
+// Update message elements handling with flexible types
+const updateMessageElement = (index: number, el: any) => {
+  const elements = messageElements.value
+  if (!elements) return
+
+  if (!el) {
+    elements[index] = null
+    return
+  }
+
+  const element = el.$el || el
+  if (element instanceof HTMLElement) {
+    elements[index] = element
+  }
+}
+
+// Enhanced scroll to bottom function
+const scrollToBottom = async (smooth = true) => {
+  await nextTick()
+  if (!chatContainerRef.value) return
+
+  const container = chatContainerRef.value
+  container.scrollTo({
+    top: container.scrollHeight,
+    behavior: smooth ? 'smooth' : 'instant'
+  })
+}
+
+// Initialize animations with flexible types
+const initializeMessageAnimations = () => {
+  if (!chatContainerRef.value || !messageElements.value) return
+
+  const elements = messageElements.value
+    .filter(el => el !== null)
+    .map(el => ref(el))
+
+  if (elements.length === 0) return
+
+  scrollTimeline(elements, {
+    scroll: {
+      container: ref(chatContainerRef.value as Element),
+      enter: "bottom-=30% top",
+      leave: "top+=10% bottom",
+      sync: "smooth",
+      repeat: true,
+      debug: false,
+    },
+    stagger: {
+      value: 50,
+      from: "first",
+    },
+    duration: "normal"
+  })
+}
+
+// Update watch handlers
+watch(messages, async () => {
+  await nextTick()
+  if (!messageElements.value) return
+  messageElements.value = new Array(messages.value.length).fill(null)
+  initializeMessageAnimations()
+  scrollToBottom()
+}, { deep: true })
+
+watch(() => currentChatId.value, async (newId: string | null) => {
+  if (!newId) return
+
+  try {
+    const loaded: any = await loadChat(newId)
+    await nextTick()
+    if (!messageElements.value) return
+    messageElements.value = new Array(messages.value.length).fill(null)
+    initializeMessageAnimations()
+    scrollToBottom(false)
+  } catch (err) {
+    console.error('Failed to load chat:', err)
+    error.value = 'Failed to load chat'
+  }
+}, { immediate: true })
+
 // Keyboard shortcut handler
-const handleKeyboardShortcuts = (e) => {
+const handleKeyboardShortcuts = (e: KeyboardEvent) => {
   if ((e.metaKey || e.ctrlKey) && e.key === ',') {
     e.preventDefault()
     isSettingsOpen.value = true
   }
 }
 
-// Add to the preferences section at the top
-const preferences = ref({
-  showOnlyPinnedModels: false
+// Initialize animations when component mounts
+onMounted(() => {
+  initializeMessageAnimations()
 })
 
 onMounted(async () => {
@@ -262,17 +367,34 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeyboardShortcuts)
 
   try {
-    // Load all settings at once
-    const [savedTheme, savedProgressBar, showOnlyPinnedModels] = await Promise.all([
+    // Load theme and settings
+    const [
+      savedTheme,
+      savedProgressBar,
+      showOnlyPinnedModels,
+      savedPinnedModels,
+      savedApiKey,
+      savedEnabledModelIds,
+      savedRecentModelIds
+    ] = await Promise.all([
       store.get('theme'),
       store.get('show-progress-bar'),
-      store.get('show-only-pinned-models')
+      store.get('show-only-pinned-models'),
+      store.get('pinned-models'),
+      store.get('api-key'),
+      store.get('enabled-model-ids'),
+      store.get('recent-model-ids')
     ])
 
     // Apply settings
-    theme.value = savedTheme || 'dark'
+    theme.value = (savedTheme as string || 'dark') as UIPreferences['theme']
     showProgressBar.value = Boolean(savedProgressBar ?? true)
     preferences.value.showOnlyPinnedModels = Boolean(showOnlyPinnedModels)
+    pinnedModels.value = savedPinnedModels as string[] || []
+    if (savedApiKey) {
+      await setApiKey(savedApiKey as string)
+      apiKeys.value = { 'openrouter': savedApiKey as string }
+    }
 
     // Load theme
     if (savedTheme === 'dark') {
@@ -281,7 +403,7 @@ onMounted(async () => {
       isDark.value = false
     }
 
-    // Load chat history
+    // Load chat history from Supabase
     chatHistory.value = await loadChatHistories()
     if (chatHistory.value.length > 0 && loadChat) {
       await loadChat(chatHistory.value[0].id)
@@ -317,36 +439,6 @@ const saveApiKey = async () => {
   }
 }
 
-// Modify scroll behavior
-const scrollToBottom = async (smooth = true) => {
-  await nextTick()
-  if (!chatContainer.value) return
-
-  const container = chatContainer.value
-  container.scrollTo({
-    top: container.scrollHeight,
-    behavior: 'instant' // Always use instant to avoid jarring scroll
-  })
-}
-
-// Watch for chat history updates
-watch(() => currentChatId.value, async (newId) => {
-  if (newId) {
-    try {
-      await loadChat(newId)
-      scrollToBottom() // Scroll after loading
-    } catch (err) {
-      console.error('Failed to load chat:', err)
-      error.value = 'Failed to load chat'
-    }
-  }
-}, { immediate: true })
-
-// Watch for new messages and scroll
-watch(messages, () => {
-  scrollToBottom()
-}, { deep: true })
-
 const createNewChat = async () => {
   try {
     // Clear current messages
@@ -355,7 +447,7 @@ const createNewChat = async () => {
 
     // Create new chat in Supabase
     const newChat = await saveChatHistory({
-      title: null,
+      title: null as any,
       messages: [],
       model: currentModel.value,
       metadata: {
@@ -378,18 +470,18 @@ const createNewChat = async () => {
 
 const activeMessageActions = ref<string | null>(null)
 
-const openMessageActions = (message: ChatMessage, index: number) => {
+const openMessageActions = (message: any, index: number) => {
   const messageKey = message.id || `msg-${currentChatId}-${index}-${message.timestamp}`
   activeMessageActions.value = activeMessageActions.value === messageKey ? null : messageKey
 }
 
-const copyMessage = async (message: ChatMessage) => {
+const copyMessage = async (message: any) => {
   await navigator.clipboard.writeText(message.content)
   activeMessageActions.value = null
 }
 
-const deleteMessage = (message: ChatMessage) => {
-  messages.value = messages.value.filter(m => m.id !== message.id)
+const deleteMessage = (message: any) => {
+  messages.value = messages.value.filter((m: any) => m.id !== message.id)
   activeMessageActions.value = null
 }
 
@@ -407,89 +499,82 @@ onMounted(() => {
   })
 })
 
-// Add proper types for handleObsidianLink parameters
-interface ObsidianLinkParams {
-  file: {
-    title: string
-    path: string
+async function handleObsidianLink(params: ObsidianLinkParams) {
+  if (!window.electron?.ipc) {
+    console.error('Electron IPC not available')
+    return
   }
-  mentionStartIndex: number
-  messageIncludedFiles: IncludedFile[]
-  mentions: Mention[]
-  newMessage: string
-}
 
-const handleObsidianLink = async ({ file, mentionStartIndex, messageIncludedFiles, mentions, newMessage }: ObsidianLinkParams) => {
+  const vaultPath = await window.electron.ipc.invoke('get-vault-path')
+  if (!vaultPath) {
+    console.error('No vault path set')
+    return
+  }
+
   try {
-    // Get the vault path
-    const vaultPath = await store.get('obsidian-vault-path')
-
-    // Get the file content
-    const content = await window.electron.ipcRenderer.invoke('get-obsidian-file-content', {
+    const result = await window.electron.ipc.invoke('get-obsidian-file-content', {
       vaultPath,
-      filePath: file.path
+      filePath: params.file.path
     })
 
-    // Calculate the end index based on the current mention
-    const endIndex = mentionStartIndex + searchQuery.value.length + 1
-    const linkText = `[[${file.title}]]`
-    const oldLength = endIndex - mentionStartIndex
-    const newLength = linkText.length
-    const lengthDiff = newLength - oldLength
+    if (result && result.content) {
+      // Create the file inclusion object
+      const includedFile: IncludedFile = {
+        title: params.file.title,
+        path: params.file.path,
+        content: result.content
+      }
 
-    // Insert the link
-    newMessage =
-      newMessage.slice(0, mentionStartIndex) +
-      linkText +
-      newMessage.slice(endIndex)
+      // Add to included files array if not already present
+      if (!messageIncludedFiles.value.some(f => f.path === includedFile.path)) {
+        messageIncludedFiles.value.push(includedFile)
+      }
 
-    // Update positions of existing mentions
-    mentions = mentions.map((mention: Mention) => {
-      if (mention.startIndex > mentionStartIndex) {
-        return {
-          ...mention,
-          startIndex: mention.startIndex + lengthDiff,
-          endIndex: mention.endIndex + lengthDiff
+      // Create the mention object
+      const mention: Mention = {
+        startIndex: params.mentionStartIndex,
+        endIndex: params.mentionStartIndex + params.file.title.length + 1,
+        file: {
+          title: params.file.title,
+          path: params.file.path
         }
       }
-      return mention
-    }).sort((a: Mention, b: Mention) => a.startIndex - b.startIndex)
 
-    // Track this mention
-    mentions.push({
-      startIndex: mentionStartIndex,
-      endIndex: mentionStartIndex + linkText.length,
-      file
-    })
+      // Add to mentions array if not already present
+      if (!mentions.value.some(m => m.file.path === mention.file.path)) {
+        mentions.value.push(mention)
+      }
 
-    // Store the file content
-    if (!messageIncludedFiles.some((f: IncludedFile) => f.path === file.path)) {
-      messageIncludedFiles.push({
-        title: file.title,
-        path: file.path,
-        content: content || ''
+      // Update the message text to include the file reference
+      const beforeMention = newMessage.value.slice(0, params.mentionStartIndex)
+      const afterMention = newMessage.value.slice(params.mentionStartIndex)
+      const mentionText = `@${params.file.title}`
+      newMessage.value = `${beforeMention}${mentionText}${afterMention.slice(mentionText.length)}`
+
+      // Hide the mention popup
+      showMentionPopup.value = false
+
+      console.log('File included:', {
+        file: includedFile,
+        mention,
+        messageText: newMessage.value
       })
     }
-
-    showMentionPopup.value = false
-    mentionStartIndex = -1
-    searchQuery.value = ''
-  } catch (err) {
-    console.error('Failed to get file content:', err)
-    error.value = 'Failed to include file content'
+  } catch (error) {
+    console.error('Error getting Obsidian file content:', error)
   }
 }
 
 // Add forkChat handler
-const handleForkChat = async (message: ChatMessage) => {
+const handleForkChat = async (message: any) => {
   if (!currentChatId.value) return
 
   // Get all messages up to and including the forked message
-  const messageIndex = messages.value.findIndex(m => m.id === message.id)
+  const messageIndex = messages.value.findIndex((m: any) => m.id === message.id)
   if (messageIndex === -1) return
 
   // Clone messages up to fork point to ensure we have complete copies
-  const messagesUpToFork = messages.value.slice(0, messageIndex + 1).map(msg => ({
+  const messagesUpToFork = messages.value.slice(0, messageIndex + 1).map((msg: any) => ({
     ...msg,
     id: crypto.randomUUID(), // Give new IDs to avoid conflicts
     timestamp: new Date().toISOString()
@@ -506,7 +591,7 @@ const handleForkChat = async (message: ChatMessage) => {
 
     if (forkedChat) {
       // Load the forked chat
-      const loadedChat = await loadChat(forkedChat.id)
+      const loadedChat: any = await loadChat(forkedChat.id)
       if (loadedChat) {
         // Update local state
         currentChatId.value = forkedChat.id
@@ -528,12 +613,12 @@ const handleForkChat = async (message: ChatMessage) => {
 }
 
 // Modify the message handling to show popups
-const handleNewMessage = (message: ChatMessage) => {
+const handleNewMessage = (message: any) => {
   // Empty function - we'll remove it later
 }
 
 // Watch messages for changes
-watch(messages, (newMessages, oldMessages) => {
+watch(messages, (newMessages: any[], oldMessages: any[]) => {
   if (newMessages?.length > (oldMessages?.length || 0)) {
     const newMessage = newMessages[newMessages.length - 1]
     if (newMessage.role === 'assistant') {
@@ -559,6 +644,69 @@ const handleDeleteChat = async (chatId: string) => {
   } catch (err) {
     console.error('Failed to delete chat:', err)
     error.value = 'Failed to delete chat'
+  }
+}
+
+// Save preferences when they change
+watch([preferences], async () => {
+  await store.set('show-only-pinned-models', preferences.value.showOnlyPinnedModels)
+  await store.set('show-progress-bar', preferences.value.showProgressBar)
+  await store.set('theme', preferences.value.theme)
+})
+
+// Save pinned models when they change
+watch([pinnedModels], async () => {
+  await store.set('pinned-models', pinnedModels.value)
+})
+
+// Save API keys when they change
+watch([apiKeys], async () => {
+  await store.set('api-key', apiKeys.value['openrouter'] || '')
+})
+
+// Save enabled models when they change
+watch([enabledModels], async () => {
+  const modelIds = enabledModels.value.map(m => typeof m === 'string' ? m : m.id)
+  await store.set('enabled-model-ids', modelIds)
+})
+
+// Save recent models when they change
+watch([recentModels], async () => {
+  const modelIds = recentModels.value.map(m => typeof m === 'string' ? m : m.id)
+  await store.set('recent-model-ids', modelIds)
+})
+
+// Update the message sending logic
+const handleSendMessage = async (content: string) => {
+  if (!content.trim()) return
+
+  try {
+    isSending.value = true
+    console.log('Sending message:', content)
+
+    // Create the message with included files
+    const messageWithFiles = {
+      content,
+      includedFiles: messageIncludedFiles.value
+    }
+
+    // Use sendAIMessage from useAIChat
+    const response = await sendMessage(messageWithFiles)
+    console.log('Got response:', response)
+
+    // Clear input and included files
+    newMessage.value = ''
+    messageIncludedFiles.value = []
+    mentions.value = []
+
+    // Scroll to bottom
+    await nextTick()
+    scrollToBottom()
+  } catch (err) {
+    console.error('Failed to send message:', err)
+    error.value = 'Failed to send message'
+  } finally {
+    isSending.value = false
   }
 }
 </script>
@@ -814,32 +962,6 @@ select option {
 .message-leave-to {
   opacity: 0;
   transform: translateY(20px);
-}
-
-/* Message list transitions */
-.message-list-move {
-  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.message-list-enter-active {
-  transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  position: relative;
-}
-
-.message-list-leave-active {
-  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-  position: absolute;
-  width: 100%;
-}
-
-.message-list-enter-from {
-  opacity: 0;
-  transform: translateY(20px) scale(0.98);
-}
-
-.message-list-leave-to {
-  opacity: 0;
-  transform: translateY(-20px) scale(0.95);
 }
 
 /* Smooth scrolling for the chat container */

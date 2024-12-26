@@ -1,12 +1,18 @@
 {
+  "extends": "@tsconfig/node18/tsconfig.json",
+  "include": [
+    "electron/**/*",
+    "src/types.ts",
+    "src/types/*.d.ts"
+  ],
   "compilerOptions": {
     "composite": true,
     "module": "ESNext",
-    "moduleResolution": "Node",
-    "allowSyntheticDefaultImports": true
-  },
-  "include": [
-    "vite.config.ts",
-    "electron"
-  ]
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  }
 }

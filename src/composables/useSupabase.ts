@@ -2,14 +2,16 @@ import { computed, ref } from "vue";
 import { createClient } from "@supabase/supabase-js";
 import type { Ref, ComputedRef } from "vue";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ChatHistory, ChatMessage, ChatMetadata } from "../types";
 import type {
   Chat,
-  NewChat,
-  ChatForkOptions,
+  ChatHistory,
+  ChatMessage,
+  ChatMetadata,
   Thread,
   ThreadOptions,
-} from "../types/chat";
+  ChatForkOptions,
+  NewChat,
+} from "../types";
 import { useStore } from "../lib/store";
 
 const supabase = createClient(
@@ -22,7 +24,9 @@ export interface UseSupabaseReturn {
   isConfigured: ComputedRef<boolean>;
   hasValidSupabaseConfig: ComputedRef<boolean>;
   saveChatHistory: (
-    history: Omit<ChatHistory, "id" | "created_at" | "updated_at">
+    history: Omit<ChatHistory, "id" | "created_at" | "updated_at"> & {
+      thread?: string;
+    }
   ) => Promise<ChatHistory>;
   updateChatHistory: (
     id: string,
@@ -59,7 +63,9 @@ export function useSupabase() {
   const hasValidSupabaseConfig = ref(true);
 
   async function saveChatHistory(
-    history: Omit<ChatHistory, "id" | "created_at" | "updated_at">
+    history: Omit<ChatHistory, "id" | "created_at" | "updated_at"> & {
+      thread?: string;
+    }
   ) {
     try {
       console.log("Saving chat history:", history);
@@ -204,20 +210,18 @@ export function useSupabase() {
   ) => {
     try {
       const { data, error } = await supabase
-        .from("vulpeculachats")
+        .from("chats")
         .update({
-          metadata: {
-            ...metadata,
-            lastUpdated: new Date().toISOString(),
-          },
+          metadata: metadata,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", chatId)
         .select();
 
       if (error) throw error;
-      return data?.[0];
-    } catch (err) {
-      console.error("Failed to update chat metadata:", err);
+      return data;
+    } catch (error) {
+      console.error("Error updating chat metadata:", error);
       return null;
     }
   };
@@ -393,13 +397,9 @@ export function useSupabase() {
         .from("vulpeculachats")
         .update({
           thread: null,
-          metadata: supabase.raw(`
-            jsonb_set(
-              metadata,
-              '{thread}',
-              'null'::jsonb
-            )
-          `),
+          metadata: {
+            thread: null,
+          },
         })
         .eq("id", chatId);
 

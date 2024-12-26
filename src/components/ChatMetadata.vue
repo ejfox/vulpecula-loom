@@ -14,7 +14,7 @@
               </svg>
             </div>
             <div>
-              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Total Tokens</div>
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Tokens</div>
               <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 {{ (stats?.promptTokens || 0) + (stats?.completionTokens || 0) }}
               </div>
@@ -34,7 +34,7 @@
               </svg>
             </div>
             <div>
-              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Input</div>
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">In</div>
               <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 {{ stats?.promptTokens || 0 }}
               </div>
@@ -51,7 +51,7 @@
               </svg>
             </div>
             <div>
-              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Output</div>
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Out</div>
               <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 {{ stats?.completionTokens || 0 }}
               </div>
@@ -98,11 +98,8 @@
 </template>
 
 <script setup lang="ts">
-interface ChatStats {
-  promptTokens: number
-  completionTokens: number
-  cost?: number
-}
+import { useOpenRouter } from '../composables/useOpenRouter'
+import type { ChatStats } from '../types'
 
 const props = withDefaults(defineProps<{
   stats: ChatStats
@@ -110,15 +107,14 @@ const props = withDefaults(defineProps<{
   stats: () => ({
     promptTokens: 0,
     completionTokens: 0,
-    cost: 0
+    cost: 0,
+    totalMessages: 0
   })
 })
 
 defineEmits<{
   export: []
 }>()
-
-import { useOpenRouter } from '../composables/useOpenRouter'
 
 const { formatModelCost } = useOpenRouter()
 </script>

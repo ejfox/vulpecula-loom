@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import type { StatusBarProps } from '../types'
 
 interface Props {
-  modelName: string
-  isConnected: boolean
+  command: (...args: any[]) => void;
+  isConnected: boolean;
+  modelName?: string;
 }
 
-const props = defineProps<Props>()
+const props = defineProps<Props>();
 const emit = defineEmits(['command'])
 
 const isCommandMode = ref(false)

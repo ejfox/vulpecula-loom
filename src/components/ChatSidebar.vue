@@ -10,7 +10,7 @@
     <div class="flex-1 overflow-y-auto p-3 space-y-4">
       <!-- New Chat Button -->
       <div class="sticky top-0 bg-white dark:bg-gray-950 pb-3 z-50">
-        <button @click="$emit('new-chat')" class="w-full px-3 py-2 flex items-center justify-center gap-2 
+        <button @click="emit('new-chat')" class="w-full px-3 py-2 flex items-center justify-center gap-2 
                  bg-blue-500 hover:bg-blue-600 
                  text-white rounded-lg transition-colors">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42,7 +42,7 @@
               ]" :style="{ paddingLeft: `${getIndentLevel(chat) * 16 + 12}px` }">
 
               <!-- Click handler on main content -->
-              <div class="flex-1 flex items-center min-w-0" @click="$emit('load-chat', chat.id)">
+              <div class="flex-1 flex items-center min-w-0" @click="emit('load-chat', chat.id)">
                 <!-- Fork Indicator -->
                 <div v-if="chat.metadata.fork?.parentId"
                   class="absolute -left-0.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-500/40">
@@ -91,7 +91,7 @@
                 <div v-if="activeDropdown === chat.id"
                   class="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-50">
                   <div class="py-1">
-                    <button @click.stop="$emit('delete-chat', chat.id)" class="w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 
+                    <button @click.stop="emit('delete-chat', chat.id)" class="w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 
                              hover:bg-gray-100 dark:hover:bg-gray-700 text-left">
                       Delete Chat
                     </button>
@@ -106,9 +106,9 @@
 
     <!-- Model Selector -->
     <div class="flex-shrink-0 p-4 bg-gray-100 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-      <select :value="currentModel" @change="$emit('set-model', $event.target.value)"
+      <select :value="currentModel" @change="handleModelChange"
         class="w-full p-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-        <template v-if="props.availableModels">
+        <template v-if="availableModels">
           <optgroup v-for="(models, provider) in groupedModels" :key="provider" :label="provider.toUpperCase()">
             <option v-for="model in models" :key="model.id" :value="model.id">
               {{ model.name || getModelDisplayName(model.id) }}
@@ -123,27 +123,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { Chat } from '../types/chat'
+import type { ChatSidebarProps, Chat, OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 
-interface Props {
+const props = defineProps<{
   chatHistory: Chat[]
   currentChatId: string | null
   currentModel: string
-  availableModels?: Array<{
-    id: string
-    name?: string
-    description?: string
-    context_length?: number
-    pricing?: {
-      prompt: string
-      completion: string
-    }
-  }>
+  availableModels: OpenRouterModel[]
   showOnlyPinnedModels?: boolean
-}
+}>()
 
-const props = defineProps<Props>()
 const emit = defineEmits(['new-chat', 'load-chat', 'set-model', 'delete-chat'])
 
 // Add local ref for model selection
@@ -153,6 +143,14 @@ const selectedModel = ref(props.currentModel)
 watch(() => props.currentModel, (newValue) => {
   selectedModel.value = newValue
 })
+
+// Handle model change
+const handleModelChange = (event: Event) => {
+  const target = event.target as HTMLSelectElement
+  if (target) {
+    emit('set-model', target.value)
+  }
+}
 
 // Group chats by thread
 const groupedChats = computed(() => {
@@ -282,12 +280,16 @@ const filteredModels = computed(() => {
 
 // Group models by provider
 const groupedModels = computed(() => {
-  return filteredModels.value.reduce((acc, model) => {
+  if (!props.availableModels) return {}
+
+  return props.availableModels.reduce((groups: Record<string, OpenRouterModel[]>, model) => {
     const [provider] = model.id.split('/')
-    if (!acc[provider]) acc[provider] = []
-    acc[provider].push(model)
-    return acc
-  }, {} as Record<string, typeof props.availableModels>)
+    if (!groups[provider]) {
+      groups[provider] = []
+    }
+    groups[provider].push(model)
+    return groups
+  }, {})
 })
 </script>
 

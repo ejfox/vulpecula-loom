@@ -1,12 +1,16 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useStore } from "../lib/store";
 import { useDebounce } from "@vueuse/core";
+import type {
+  ObsidianFile,
+  ObsidianSearchOptions,
+  ElectronAPI,
+} from "../types";
 
-export interface ObsidianFile {
-  title: string;
-  path: string;
-  slug: string;
-  preview?: string;
+// Ensure window.electron exists with proper type checking
+const electron = window.electron as ElectronAPI;
+if (!electron?.ipc) {
+  throw new Error("Electron IPC not available - this app must run in Electron");
 }
 
 export function useObsidianFiles() {
@@ -15,123 +19,93 @@ export function useObsidianFiles() {
   const debouncedQuery = useDebounce(searchQuery, 150);
   const isSearching = ref(false);
   const searchResults = ref<ObsidianFile[]>([]);
-  const resolvedVaultPath = ref<string>("");
+  const vaultPath = ref<string>("");
   const error = ref<string | null>(null);
 
-  // Get and resolve the vault path
-  const updateVaultPath = async () => {
+  // Load vault path on initialization
+  const loadVaultPath = async () => {
     try {
       error.value = null;
       const path = await store.get("obsidian-vault-path");
-      resolvedVaultPath.value = path || "";
+      vaultPath.value = path || "";
     } catch (err) {
-      console.error("Failed to get vault path:", err);
+      console.error("Failed to load Obsidian vault path:", err);
       error.value =
-        err instanceof Error ? err.message : "Failed to get vault path";
-      resolvedVaultPath.value = "";
+        err instanceof Error
+          ? err.message
+          : "Failed to load Obsidian vault path";
+      vaultPath.value = "";
     }
   };
 
-  // Initial vault path resolution - wait for electron to be ready
-  onMounted(() => {
-    if (window.electron?.store) {
-      updateVaultPath();
-    } else {
-      const checkInterval = setInterval(() => {
-        if (window.electron?.store) {
-          clearInterval(checkInterval);
-          updateVaultPath();
-        }
-      }, 100);
+  // Computed property to check if we have a valid vault
+  const hasVault = computed(() => Boolean(vaultPath.value));
 
-      // Clear interval after 5 seconds if electron is still not available
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        if (!window.electron?.store) {
-          error.value = "Electron store not available after timeout";
-        }
-      }, 5000);
-    }
+  // Watch for vault path changes
+  watch(vaultPath, (newPath) => {
+    console.log("Vault path updated:", newPath);
   });
 
-  const hasVault = computed(() => Boolean(resolvedVaultPath.value));
+  // Initialize
+  onMounted(() => {
+    loadVaultPath();
+  });
 
-  async function searchFiles(query: string): Promise<ObsidianFile[]> {
-    console.group("Obsidian File Search");
+  // Search function
+  const searchFiles = async (query: string) => {
+    console.log("Obsidian File Search");
     console.log("Query:", query);
     console.log("Has vault:", hasVault.value);
-    console.log("Vault path:", resolvedVaultPath.value);
+    console.log("Vault path:", vaultPath.value);
 
     if (!hasVault.value || !query.trim()) {
       console.log("Returning early - no vault or empty query");
-      console.groupEnd();
-      return [];
+      searchResults.value = [];
+      return;
     }
 
     try {
       isSearching.value = true;
-
-      // Only send the minimal required data
-      const searchRequest = {
-        path: resolvedVaultPath.value,
+      const searchOptions: ObsidianSearchOptions = {
+        path: vaultPath.value,
         searchTerm: query.trim(),
       };
-      console.log("Search request:", searchRequest);
 
-      // Ensure we're sending a plain object
-      const results = await window.electron.ipcRenderer.invoke(
+      const results = await electron.ipc.invoke(
         "search-obsidian-files",
-        JSON.parse(JSON.stringify(searchRequest))
+        searchOptions
       );
-      console.log("Search results:", results);
-
-      // Ensure we're getting back valid data
       if (Array.isArray(results)) {
-        const mappedResults = results.map((result) => ({
-          title: String(result.title || ""),
-          path: String(result.path || ""),
-          slug: String(result.slug || ""),
-          preview: result.preview ? String(result.preview) : undefined,
-        }));
-        console.log("Mapped results:", mappedResults);
-        console.groupEnd();
-        return mappedResults;
+        searchResults.value = results;
+      } else {
+        console.error("Unexpected search results format:", results);
+        searchResults.value = [];
       }
-
-      console.log("Invalid results format");
-      console.groupEnd();
-      return [];
     } catch (err) {
-      console.error("Failed to search Obsidian files:", err);
-      console.groupEnd();
-      return [];
+      console.error("Failed to search files:", err);
+      error.value =
+        err instanceof Error ? err.message : "Failed to search files";
+      searchResults.value = [];
     } finally {
       isSearching.value = false;
     }
-  }
+  };
 
-  // Watch for query changes
-  watch(debouncedQuery, async (newQuery: string) => {
-    if (newQuery) {
-      searchResults.value = await searchFiles(newQuery);
+  // Watch search query changes with debounce
+  watch(debouncedQuery, async (query) => {
+    if (query) {
+      await searchFiles(query);
     } else {
       searchResults.value = [];
     }
   });
-
-  // Watch for vault path changes
-  watch(
-    () => store.get("obsidian-vault-path"),
-    () => {
-      updateVaultPath();
-    }
-  );
 
   return {
     searchQuery,
     searchResults,
     isSearching,
     hasVault,
+    vaultPath,
     searchFiles,
     error,
   };
