@@ -89,10 +89,10 @@ export function useOpenRouter(): UseOpenRouterReturn {
     const model = availableModels.value.find(
       (m: OpenRouterModel) => m.id === modelId
     );
-    if (!model) return 0;
+    if (!model?.pricing) return 0;
     // Average of prompt and completion cost per 1M tokens
-    const promptCost = model.pricing.prompt || 0;
-    const completionCost = model.pricing.completion || 0;
+    const promptCost = Number(model.pricing.prompt) || 0;
+    const completionCost = Number(model.pricing.completion) || 0;
     return (promptCost + completionCost) / 2;
   }
 
@@ -141,17 +141,22 @@ export function useOpenRouter(): UseOpenRouterReturn {
       // Map all available models
       availableModels.value = data.data
         .filter((model: any) => {
-          // Filter out any invalid models
-          return model.id && model.name && model.pricing;
+          // Filter out any invalid models - ensure required fields exist
+          return (
+            model.id &&
+            model.context_length &&
+            model.pricing?.prompt &&
+            model.pricing?.completion
+          );
         })
         .map((model: any) => ({
           id: model.id,
-          name: model.name,
+          name: model.name || model.id,
           description: model.description,
           context_length: model.context_length,
           pricing: {
-            prompt: Number(model.pricing.prompt),
-            completion: Number(model.pricing.completion),
+            prompt: String(model.pricing.prompt),
+            completion: String(model.pricing.completion),
           },
         }));
 
@@ -398,10 +403,20 @@ export function useOpenRouter(): UseOpenRouterReturn {
       }
 
       // For non-recent models, sort by cost then name
-      const costA = (a.pricing.prompt + a.pricing.completion) / 2;
-      const costB = (b.pricing.prompt + b.pricing.completion) / 2;
-      if (costA !== costB) return costB - costA;
-      return a.name.localeCompare(b.name);
+      const costA = (model: OpenRouterModel) =>
+        model.pricing
+          ? (Number(model.pricing.prompt) + Number(model.pricing.completion)) /
+            2
+          : 0;
+      const costB = (model: OpenRouterModel) =>
+        model.pricing
+          ? (Number(model.pricing.prompt) + Number(model.pricing.completion)) /
+            2
+          : 0;
+      const modelCostA = costA(a);
+      const modelCostB = costB(b);
+      if (modelCostA !== modelCostB) return modelCostB - modelCostA;
+      return (a.name || a.id).localeCompare(b.name || b.id);
     });
   });
 

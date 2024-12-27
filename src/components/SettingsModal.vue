@@ -18,7 +18,7 @@ const props = defineProps<{
     id: string
     name?: string
     description?: string
-    context_length?: number
+    context_length: number
     pricing?: {
       prompt: string
       completion: string

@@ -65,7 +65,13 @@ async function createWindow() {
     await win.loadURL(process.env.VITE_DEV_SERVER_URL);
     win.webContents.openDevTools();
   } else {
-    await win.loadFile(path.join(process.env.DIST, "index.html"));
+    // Make sure DIST is defined
+    const distPath = process.env.DIST;
+    if (!distPath) {
+      throw new Error("DIST path is not defined");
+    }
+    // In production, load from the dist directory
+    await win.loadFile(path.join(distPath, "dist", "index.html"));
   }
 }
 

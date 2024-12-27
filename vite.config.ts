@@ -13,7 +13,7 @@ export default defineConfig({
     electron([
       {
         // Main process entry file
-        entry: "src/electron/main.ts",
+        entry: "electron/main/index.ts",
         onstart(options) {
           options.startup();
         },
@@ -29,7 +29,7 @@ export default defineConfig({
         },
       },
       {
-        entry: "src/electron/preload.ts",
+        entry: "electron/preload/index.ts",
         onstart(options) {
           options.reload();
         },
