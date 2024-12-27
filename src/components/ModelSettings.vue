@@ -152,10 +152,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import type { OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import Fuse from 'fuse.js'
+import logger from '../lib/logger'
 
 const store = useStore()
 
@@ -165,6 +166,11 @@ interface Props {
 
 const props = defineProps<Props>();
 
+// Debug watcher for availableModels
+watch(() => props.availableModels, (newModels) => {
+  logger.debug('Models updated', { count: newModels?.length })
+}, { immediate: true, deep: true })
+
 const pinnedModels = ref<OpenRouterModel[]>([])
 const searchQuery = ref('')
 const sortBy = ref<'name' | 'promptCost' | 'completionCost' | 'totalCost' | 'contextLength'>('name')
@@ -172,9 +178,21 @@ const sortDirection = ref<'asc' | 'desc'>('asc')
 
 // Initialize pinned models
 const initializePinnedModels = async () => {
-  const pinnedIds = await window.electron?.store.get('pinned-models') || []
-  pinnedModels.value = props.availableModels.filter(model => pinnedIds.includes(model.id))
+  try {
+    const pinnedIds = await window.electron?.store.get('pinned-models') || []
+    const pinned = props.availableModels.filter(model => pinnedIds.includes(model.id))
+    pinnedModels.value = pinned
+  } catch (err) {
+    logger.error('Failed to initialize pinned models', err)
+  }
 }
+
+// Watch for changes in available models to re-initialize pinned models
+watch(() => props.availableModels, async () => {
+  if (props.availableModels.length > 0) {
+    await initializePinnedModels()
+  }
+}, { immediate: true })
 
 // Pin/unpin model functions
 const pinModel = async (modelId: string) => {
@@ -182,8 +200,10 @@ const pinModel = async (modelId: string) => {
   if (!model) return
 
   const pinnedIds = await window.electron?.store.get('pinned-models') || []
-  await window.electron?.store.set('pinned-models', [...pinnedIds, modelId])
-  pinnedModels.value.push(model)
+  if (!pinnedIds.includes(modelId)) {
+    await window.electron?.store.set('pinned-models', [...pinnedIds, modelId])
+    pinnedModels.value.push(model)
+  }
 }
 
 const unpinModel = async (modelId: string) => {
@@ -201,7 +221,16 @@ const unpinnedModels = computed(() => {
 
 // Sort and filter models
 const filteredModels = computed(() => {
-  const models = [...unpinnedModels.value]
+  let models = [...unpinnedModels.value]
+  
+  // Apply search filter if there's a query
+  if (searchQuery.value.trim()) {
+    const fuse = new Fuse(models, fuseOptions)
+    const results = fuse.search(searchQuery.value)
+    models = results.map(result => result.item)
+  }
+  
+  // Sort models
   models.sort((a: OpenRouterModel, b: OpenRouterModel) => {
     const aValue = getSortValue(a)
     const bValue = getSortValue(b)
@@ -220,17 +249,22 @@ const filteredModels = computed(() => {
 
     return 0
   })
+  
   return models
 })
 
 // Group models by provider
 const sortedGroupedModels = computed(() => {
-  return filteredModels.value.reduce((acc: Record<string, OpenRouterModel[]>, model: OpenRouterModel) => {
+  const models = filteredModels.value
+  
+  const grouped = models.reduce((acc: Record<string, OpenRouterModel[]>, model: OpenRouterModel) => {
     const [provider] = model.id.split('/')
     if (!acc[provider]) acc[provider] = []
     acc[provider].push(model)
     return acc
   }, {})
+  
+  return grouped
 })
 
 // Fuzzy search configuration
@@ -353,5 +387,10 @@ const getProviderIcon = (modelId: string): string => {
 }
 
 // Initialize on mount
-initializePinnedModels()
+onMounted(async () => {
+  logger.debug('ModelSettings mounted')
+  if (props.availableModels.length > 0) {
+    await initializePinnedModels()
+  }
+})
 </script>

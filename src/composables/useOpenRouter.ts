@@ -1,5 +1,6 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useStore } from "../lib/store";
+import logger from "../lib/logger";
 import type { Ref, ComputedRef } from "vue";
 import type {
   OpenRouterModel,
@@ -66,13 +67,13 @@ export function useOpenRouter(): UseOpenRouterReturn {
   });
 
   const hasValidKey = computed(() => {
-    console.log("useOpenRouter: Checking hasValidKey:", {
-      apiKey: apiKey.value ? "Key exists" : "No key",
-      keyFormat: apiKey.value.startsWith("sk-or-") && apiKey.value.length > 10,
+    logger.debug("Checking API key validity", {
+      hasKey: !!apiKey.value,
+      validFormat:
+        apiKey.value.startsWith("sk-or-") && apiKey.value.length > 10,
       modelsLoaded: availableModels.value.length > 0,
     });
 
-    // Only require the key format check since models may not be loaded yet
     return apiKey.value.startsWith("sk-or-") && apiKey.value.length > 10;
   });
   const availableModels = ref<OpenRouterModel[]>([]);
@@ -123,6 +124,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
   // Fetch available models from OpenRouter API
   async function fetchAvailableModels({ includeAll = false } = {}) {
     try {
+      logger.debug("Fetching models from OpenRouter API");
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -132,22 +134,29 @@ export function useOpenRouter(): UseOpenRouterReturn {
       });
 
       if (!response.ok) {
+        logger.error("Failed to fetch models", {
+          status: response.status,
+          statusText: response.statusText,
+        });
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Raw OpenRouter response:", data);
 
       // Map all available models
-      availableModels.value = data.data
+      const processedModels = data.data
         .filter((model: any) => {
           // Filter out any invalid models - ensure required fields exist
-          return (
+          const isValid =
             model.id &&
             model.context_length &&
             model.pricing?.prompt &&
-            model.pricing?.completion
-          );
+            model.pricing?.completion;
+
+          if (!isValid) {
+            logger.warn("Invalid model filtered out", { id: model.id });
+          }
+          return isValid;
         })
         .map((model: any) => ({
           id: model.id,
@@ -160,8 +169,15 @@ export function useOpenRouter(): UseOpenRouterReturn {
           },
         }));
 
+      logger.debug("Models processed", {
+        total: processedModels.length,
+      });
+
+      availableModels.value = processedModels;
+
       // If we don't have any enabled models yet, enable some defaults
       if (enabledModelIds.value.length === 0) {
+        logger.debug("Setting default enabled models");
         enabledModelIds.value = [
           "anthropic/claude-3-sonnet:beta",
           "anthropic/claude-2.1",
@@ -171,69 +187,57 @@ export function useOpenRouter(): UseOpenRouterReturn {
         await store.set("enabledModelIds", enabledModelIds.value);
       }
 
-      console.log("Processed models:", {
+      logger.debug("Models initialization complete", {
         total: availableModels.value.length,
         enabled: enabledModelIds.value.length,
-        models: availableModels.value,
       });
     } catch (error) {
-      console.error("Failed to fetch models:", error);
+      logger.error("Failed to fetch models", error);
       availableModels.value = [];
     }
   }
 
   // Initialize API key and enabled models
   const initialize = async () => {
-    console.log("🔄 Initializing OpenRouter...");
+    logger.debug("Initializing OpenRouter");
     try {
       isLoading.value = true;
       error.value = null;
 
       // Load API key
-      console.log("🔍 Loading API key from store...");
       const storedKey = await store.get("api-key");
-      console.log(
-        "📥 Loaded API key:",
-        storedKey ? "Found key" : "No key found"
-      );
+      logger.debug("API key loaded", { hasKey: !!storedKey });
 
       if (storedKey) {
-        console.log("🔑 Setting API key and validating...");
         apiKey.value = storedKey;
-        await validateApiKey(storedKey);
+        const isValid = await validateApiKey(storedKey);
+        logger.debug("API key validated", { isValid });
       }
 
-      // Load enabled models (try both formats)
-      console.log("📥 Loading enabled models...");
+      // Load enabled models
       const storedEnabledIds =
         (await store.get("enabled-model-ids")) ||
         (await store.get("enabledModelIds"));
       if (storedEnabledIds) {
-        console.log("✅ Found enabled models:", storedEnabledIds);
         enabledModelIds.value = storedEnabledIds;
       }
 
-      // Load recent models (try both formats)
-      console.log("📥 Loading recent models...");
+      // Load recent models
       const storedRecentIds =
         (await store.get("recent-model-ids")) ||
         (await store.get("recentModelIds"));
       if (storedRecentIds) {
-        console.log("✅ Found recent models:", storedRecentIds);
         recentModelIds.value = storedRecentIds;
       }
 
       // Fetch models if we have a key
       if (apiKey.value) {
-        console.log("🔄 Fetching available models...");
         await fetchAvailableModels();
       }
 
-      console.log("✅ OpenRouter initialization complete");
-      isInitialized.value = true;
+      logger.debug("OpenRouter initialization complete");
     } catch (err) {
-      console.error("❌ Failed to initialize OpenRouter:", err);
-      error.value = "Failed to initialize OpenRouter";
+      logger.error("Failed to initialize OpenRouter", err);
     } finally {
       isLoading.value = false;
     }
@@ -244,24 +248,16 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
   // Track model usage
   function trackModelUsage(modelId: string) {
-    console.log("Tracking usage for model:", modelId);
-    console.log("Before update:", recentModelIds.value);
+    logger.debug("Tracking model usage", { modelId });
 
-    // Create a new plain array with the updated model IDs
     const updatedIds = [
       modelId,
       ...Array.from(recentModelIds.value.filter((id) => id !== modelId)),
     ];
-
-    // Keep only last 10
     const trimmedIds = updatedIds.slice(0, 10);
-
-    // Update the ref
     recentModelIds.value = trimmedIds;
 
-    console.log("After update:", recentModelIds.value);
-
-    // Save plain array to store (both formats)
+    // Save to store
     store.set("recent-model-ids", Array.from(trimmedIds));
     store.set("recentModelIds", Array.from(trimmedIds));
   }
@@ -309,50 +305,34 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
   // Save API key to store
   const saveApiKey = async (key: string): Promise<boolean> => {
-    console.log("🔑 Attempting to save API key");
     try {
-      // First validate the key
-      console.log("🔍 Validating API key...");
       const isValid = await validateApiKey(key);
       if (!isValid) {
-        console.warn("⚠️ API key validation failed");
+        logger.warn("API key validation failed");
         error.value = "Invalid API key";
         return false;
       }
-      console.log("✅ API key validation successful");
 
-      // Then save it
-      console.log("💾 Saving API key to store...");
       await store.set("api-key", key);
       apiKey.value = key;
-      console.log("✅ API key saved to store");
-
-      // Fetch models to verify the key works
-      console.log("🔄 Fetching models to verify key...");
       await fetchAvailableModels();
-      console.log("✅ Models fetched successfully");
 
       return true;
     } catch (err) {
-      console.error("❌ Failed to save API key:", err);
+      logger.error("Failed to save API key", err);
       error.value = "Failed to save API key";
       return false;
     }
   };
 
   const validateApiKey = async (key: string): Promise<boolean> => {
-    console.log("🔍 Validating API key format and access...");
     try {
-      // Basic format validation
       if (!key.startsWith("sk-or-") || key.length < 10) {
-        console.warn("⚠️ Invalid API key format");
+        logger.warn("Invalid API key format");
         error.value = "Invalid API key format";
         return false;
       }
-      console.log("✅ API key format is valid");
 
-      // Test the key by trying to fetch models
-      console.log("🔄 Testing API key with models endpoint...");
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -362,15 +342,14 @@ export function useOpenRouter(): UseOpenRouterReturn {
       });
 
       if (!response.ok) {
-        console.warn("⚠️ API key test failed:", response.status);
+        logger.warn("API key test failed", { status: response.status });
         error.value = "Invalid API key";
         return false;
       }
 
-      console.log("✅ API key test successful");
       return true;
     } catch (err) {
-      console.error("❌ Error validating API key:", err);
+      logger.error("Error validating API key", err);
       error.value = "Failed to validate API key";
       return false;
     }
@@ -434,16 +413,11 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
     let userMessage = content;
 
-    // Replace @mentions with actual file contents
+    // Process included files
     if (options.includedFiles?.length) {
-      console.log(
-        "📎 useOpenRouter: Processing included files:",
-        options.includedFiles.map((f) => ({
-          title: f.title,
-          path: f.path,
-          contentPreview: f.content?.slice(0, 100) + "...",
-        }))
-      );
+      logger.debug("Processing included files", {
+        count: options.includedFiles.length,
+      });
 
       for (const file of options.includedFiles) {
         const mentionPattern = new RegExp(`@${file.title}\\b`);
@@ -452,25 +426,11 @@ export function useOpenRouter(): UseOpenRouterReturn {
           `@${file.title}\n\nContent of ${file.title}:\n\`\`\`\n${file.content}\n\`\`\`\n\n`
         );
       }
-
-      console.log(
-        "📝 useOpenRouter: Created user message with embedded files:",
-        userMessage.slice(0, 200) + "..."
-      );
     }
 
-    // Build the messages array - no system message needed now
     const messages = [{ role: "user", content: userMessage }];
 
     try {
-      console.log(
-        "🚀 useOpenRouter: Sending request with messages:",
-        messages.map((m) => ({
-          role: m.role,
-          contentPreview: m.content.slice(0, 100) + "...",
-        }))
-      );
-
       const response = await fetch(
         "https://openrouter.ai/api/v1/chat/completions",
         {
@@ -493,9 +453,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
       }
 
       const data = await response.json();
-      console.log("OpenRouter response:", data);
-
-      // Track model usage
       trackModelUsage(options.model || currentModel.value);
 
       return {
@@ -507,7 +464,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
           : 0,
       };
     } catch (err) {
-      console.error("Failed to send message:", err);
+      logger.error("Failed to send message", err);
       throw err;
     }
   };
@@ -517,17 +474,15 @@ export function useOpenRouter(): UseOpenRouterReturn {
       isLoading.value = true;
       currentChatId.value = id;
 
-      // Load chat history from Supabase
       const { supabase } = useSupabase();
-      const { data: chat, error } = await supabase
+      const { data: chat, error: chatError } = await supabase
         .from("vulpeculachats")
         .select("*")
         .eq("id", id)
         .single();
 
-      if (error) throw error;
+      if (chatError) throw chatError;
 
-      // Update state with basic message format
       messages.value = chat.messages.map((m: ChatMessage) => ({
         ...m,
         timestamp: m.timestamp || new Date().toISOString(),
@@ -537,7 +492,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
       return chat;
     } catch (err) {
-      console.error("Error loading chat:", err);
+      logger.error("Error loading chat", err);
       error.value = "Failed to load chat";
     } finally {
       isLoading.value = false;

@@ -125,6 +125,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { ChatSidebarProps, Chat, OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
+import logger from '../lib/logger'
 
 const props = defineProps<{
   chatHistory: Chat[]
@@ -259,11 +260,20 @@ const store = useStore()
 // Add state for pinned model IDs
 const pinnedModelIds = ref<string[]>([])
 
-// Load pinned models on mount and when they change
-onMounted(async () => {
-  const stored = await store.get('pinned-models')
-  pinnedModelIds.value = stored ?? []
+// Watch for changes in pinned models
+watch(pinnedModelIds, async (newIds) => {
+  logger.debug('Pinned models updated', { count: newIds.length })
+  await loadPinnedModels()
 })
+
+const loadPinnedModels = async () => {
+  try {
+    const stored = await store.get('pinned-models')
+    pinnedModelIds.value = stored ?? []
+  } catch (err) {
+    logger.error('Failed to load pinned models', err)
+  }
+}
 
 // Group and filter models
 const filteredModels = computed(() => {
@@ -282,7 +292,12 @@ const filteredModels = computed(() => {
 const groupedModels = computed(() => {
   if (!props.availableModels) return {}
 
-  return props.availableModels.reduce((groups: Record<string, OpenRouterModel[]>, model) => {
+  // Filter models based on pinned status if needed
+  const models = props.showOnlyPinnedModels
+    ? props.availableModels.filter(model => pinnedModelIds.value.includes(model.id))
+    : props.availableModels
+
+  return models.reduce((groups: Record<string, OpenRouterModel[]>, model) => {
     const [provider] = model.id.split('/')
     if (!groups[provider]) {
       groups[provider] = []

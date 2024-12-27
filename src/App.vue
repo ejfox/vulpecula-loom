@@ -87,7 +87,7 @@
 
     <!-- Settings Modal -->
     <SettingsModal v-model="isSettingsOpen" v-model:theme="theme" v-model:showProgressBar="showProgressBar"
-      v-model:showOnlyPinnedModels="preferences.showOnlyPinnedModels" :available-models="availableModels"
+      v-model:showOnlyPinnedModels="preferences.showOnlyPinnedModels" :available-models="openRouter.availableModels.value"
       @validate-api-key="validateApiKey" />
   </div>
 </template>
@@ -193,7 +193,7 @@ const {
   setApiKey,
   recentModels,
   validateApiKey,
-  formatModelCost
+  formatModelCost,
 } = openRouter
 
 // Chat history
@@ -237,7 +237,7 @@ const preferences = ref<UIPreferences>({
   showProgressBar: true
 })
 
-const pinnedModels = ref<string[]>([])
+const pinnedModels = ref<(string | { id: string })[]>([])
 const apiKeys = ref<Record<string, string>>({})
 
 // Input handling
@@ -656,7 +656,8 @@ watch([preferences], async () => {
 
 // Save pinned models when they change
 watch([pinnedModels], async () => {
-  await store.set('pinned-models', pinnedModels.value)
+  const modelIds = pinnedModels.value.map(m => typeof m === 'string' ? m : m.id)
+  await store.set('pinned-models', modelIds)
 })
 
 // Save API keys when they change
@@ -709,6 +710,15 @@ const handleSendMessage = async (content: string) => {
     isSending.value = false
   }
 }
+
+// Add logging for available models
+watch(() => openRouter.availableModels.value, (newModels) => {
+  console.log('App.vue - Available models changed:', {
+    count: newModels.length,
+    first: newModels[0],
+    last: newModels[newModels.length - 1]
+  })
+}, { immediate: true, deep: true })
 </script>
 
 <style>

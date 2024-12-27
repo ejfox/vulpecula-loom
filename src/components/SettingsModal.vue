@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import type { OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import { useOpenRouter } from '../composables/useOpenRouter'
 import ModelSettings from './ModelSettings.vue'
@@ -14,16 +15,8 @@ const props = defineProps<{
   modelValue: boolean
   theme: string
   showProgressBar: boolean
-  availableModels: Array<{
-    id: string
-    name?: string
-    description?: string
-    context_length: number
-    pricing?: {
-      prompt: string
-      completion: string
-    }
-  }>
+  showOnlyPinnedModels: boolean
+  availableModels: OpenRouterModel[]
 }>()
 
 const emit = defineEmits<{
@@ -197,6 +190,15 @@ const selectObsidianVault = async () => {
     isSelectingVault.value = false;
   }
 };
+
+// Watch for modal opening
+watch(() => props.modelValue, (isOpen) => {
+  if (isOpen) {
+    console.log('Settings modal opened')
+    console.log('Available models:', props.availableModels)
+    console.log('Available models length:', props.availableModels?.length)
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -351,8 +353,13 @@ const selectObsidianVault = async () => {
 
           <!-- Models Tab -->
           <div v-if="currentTab === 'models'" class="space-y-8">
-            <ModelSettings :available-models="availableModels"
-              :show-only-pinned-models="preferences.showOnlyPinnedModels" />
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {{ availableModels.length }} models available
+            </div>
+            <ModelSettings 
+              :available-models="availableModels"
+              :show-only-pinned-models="preferences.showOnlyPinnedModels" 
+              @update:show-only-pinned-models="(value) => preferences.showOnlyPinnedModels = value" />
           </div>
         </template>
       </div>
