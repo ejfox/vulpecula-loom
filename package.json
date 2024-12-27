@@ -27,7 +27,8 @@
     "build": "vue-tsc --noEmit && vite build && electron-builder",
     "preview": "vite preview",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "docs-serve": "npx serve docs"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
