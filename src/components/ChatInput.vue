@@ -85,10 +85,14 @@ const handleSubmit = () => {
   newMessage.value = ''
   messageIncludedFiles.value = []
   mentions.value = []
+  // Maintain focus after sending
+  nextTick(() => {
+    textareaRef.value?.focus()
+  })
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === '@') {
+  if (e.key === '@' && !e.isComposing) {
     emit('mention-popup', true)
     mentionStartIndex.value = (e.target as HTMLTextAreaElement).selectionStart || 0
   } else if (e.key === 'Escape') {
@@ -119,22 +123,28 @@ const findLastUnusedAtSymbol = (text: string, cursorPosition: number) => {
 }
 
 const handleInput = (e: Event) => {
+  if (!(e instanceof InputEvent)) return
+
   const input = e.target as HTMLInputElement
   const value = input.value
   const cursorPosition = input.selectionStart || 0
 
-  // Find the last @ before cursor that isn't part of an existing mention
-  const lastAtIndex = findLastUnusedAtSymbol(value, cursorPosition)
-
-  if (lastAtIndex >= 0) {
-    mentionStartIndex.value = lastAtIndex
+  // Only process @ symbol if it was just typed (not pasted)
+  if (e.inputType === 'insertText' && value[cursorPosition - 1] === '@') {
+    mentionStartIndex.value = cursorPosition - 1
     emit('mention-popup', true)
-    const query = value.slice(lastAtIndex + 1, cursorPosition)
+    const query = value.slice(mentionStartIndex.value + 1, cursorPosition)
     emit('input', query)
   } else if (mentionStartIndex.value >= 0) {
-    emit('mention-popup', false)
-    mentionStartIndex.value = -1
-    emit('input', '')
+    // Continue handling existing mention
+    const query = value.slice(mentionStartIndex.value + 1, cursorPosition)
+    if (!query.trim() || query.includes(' ')) {
+      emit('mention-popup', false)
+      mentionStartIndex.value = -1
+      emit('input', '')
+    } else {
+      emit('input', query)
+    }
   }
 }
 

@@ -42,6 +42,8 @@ export interface UseOpenRouterReturn {
       model?: string;
       temperature?: number;
       includedFiles?: IncludedFile[];
+      conversationHistory?: ChatMessage[];
+      onToken?: (token: string) => void;
     }
   ) => Promise<OpenRouterResponse>;
   validateApiKey: (key: string) => Promise<boolean>;
@@ -100,25 +102,28 @@ export function useOpenRouter(): UseOpenRouterReturn {
   // Format model cost to appropriate decimal places
   function formatModelCost(modelId: string, rawCost?: number): string {
     const cost = rawCost ?? getModelCost(modelId);
+
     if (cost === 0) return "$0.00";
 
-    // For very small numbers (less than 0.01)
-    if (cost < 0.01) {
-      return `$${cost.toFixed(5)}`;
+    // For costs that are $0.01 or more per token
+    if (cost >= 0.01) {
+      return `$${cost.toFixed(2)}/tok`;
     }
 
-    // For small numbers (less than 0.1)
-    if (cost < 0.1) {
-      return `$${cost.toFixed(4)}`;
+    // For costs around a penny or less, show in cents per token
+    if (cost >= 0.0001) {
+      return `${(cost * 100).toFixed(1)}¢/tok`;
     }
 
-    // For numbers less than 1
-    if (cost < 1) {
-      return `$${cost.toFixed(3)}`;
+    // For smaller costs, show in cents per KTok
+    const perKTok = cost * 1000 * 100; // Convert to cents per 1000 tokens
+    if (perKTok >= 0.01) {
+      return `${perKTok.toFixed(1)}¢/KTok`;
     }
 
-    // For regular numbers
-    return `$${cost.toFixed(2)}`;
+    // For tiny costs, show in cents per GTok (million tokens)
+    const perGTok = cost * 1000000 * 100; // Convert to cents per million tokens
+    return `${perGTok.toFixed(1)}¢/GTok`;
   }
 
   // Fetch available models from OpenRouter API
@@ -405,6 +410,8 @@ export function useOpenRouter(): UseOpenRouterReturn {
       model?: string;
       temperature?: number;
       includedFiles?: IncludedFile[];
+      conversationHistory?: ChatMessage[];
+      onToken?: (token: string) => void;
     }
   ): Promise<OpenRouterResponse> => {
     if (!hasValidKey.value) {
@@ -428,7 +435,10 @@ export function useOpenRouter(): UseOpenRouterReturn {
       }
     }
 
-    const messages = [{ role: "user", content: userMessage }];
+    // Build messages array with conversation history
+    const messages = options.conversationHistory
+      ? [...options.conversationHistory, { role: "user", content: userMessage }]
+      : [{ role: "user", content: userMessage }];
 
     try {
       const response = await fetch(
@@ -439,11 +449,13 @@ export function useOpenRouter(): UseOpenRouterReturn {
             Authorization: `Bearer ${apiKey.value}`,
             "Content-Type": "application/json",
             "HTTP-Referer": window.location.origin,
+            Accept: "text/event-stream",
           },
           body: JSON.stringify({
             model: options.model || currentModel.value,
             messages,
             temperature: options.temperature ?? temperature.value,
+            stream: !!options.onToken,
           }),
         }
       );
@@ -452,16 +464,81 @@ export function useOpenRouter(): UseOpenRouterReturn {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      // Handle streaming response
+      if (options.onToken) {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let content = "";
+        let totalTokens = 0;
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split("\n");
+
+            for (const line of lines) {
+              if (!line.trim() || !line.startsWith("data: ")) continue;
+
+              const data = line.slice(5);
+              if (data === "[DONE]") continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const token = parsed.choices?.[0]?.delta?.content;
+                if (token) {
+                  content += token;
+                  totalTokens++;
+                  options.onToken(token);
+                }
+              } catch (e) {
+                logger.debug("Failed to parse streaming response line:", {
+                  line,
+                  error: e,
+                });
+                continue;
+              }
+            }
+          }
+        }
+
+        // Calculate approximate cost for streaming response using the specified model
+        const modelId = options.model || currentModel.value;
+        const modelCost = getModelCost(modelId);
+        const estimatedPromptTokens = messages.reduce(
+          (sum, msg) => sum + (msg.content?.length || 0) / 4,
+          0
+        );
+
+        return {
+          content,
+          usage: {
+            prompt_tokens: Math.ceil(estimatedPromptTokens),
+            completion_tokens: totalTokens,
+            total_tokens: Math.ceil(estimatedPromptTokens) + totalTokens,
+          },
+          cost: ((estimatedPromptTokens + totalTokens) * modelCost) / 1000000,
+          model: modelId, // Add model to response for accurate cost tracking
+        };
+      }
+
+      // Handle non-streaming response
       const data = await response.json();
-      trackModelUsage(options.model || currentModel.value);
+      const modelId = options.model || currentModel.value;
+      trackModelUsage(modelId);
+      const modelCost = getModelCost(modelId);
 
       return {
         content: data.choices[0].message.content,
         usage: data.usage,
         cost: data.usage
-          ? (data.usage.prompt_tokens * getModelCost(currentModel.value)) /
+          ? ((data.usage.prompt_tokens + data.usage.completion_tokens) *
+              modelCost) /
             1000000
           : 0,
+        model: modelId,
       };
     } catch (err) {
       logger.error("Failed to send message", err);

@@ -61,7 +61,12 @@ export function useAIChat() {
     try {
       isLoading.value = true;
 
-      // Create user message
+      // Create user message with guaranteed tokens and cost
+      const estimatedTokens = Math.ceil(content.length / 4);
+      const estimatedCost =
+        (estimatedTokens * openRouter.getModelCost(currentModel.value)) /
+        1000000;
+
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -69,10 +74,11 @@ export function useAIChat() {
         timestamp: new Date().toISOString(),
         model: currentModel.value,
         tokens: {
-          prompt: 0,
+          prompt: estimatedTokens,
           completion: 0,
-          total: 0,
+          total: estimatedTokens,
         },
+        cost: estimatedCost,
         includedFiles,
       };
 
@@ -86,12 +92,42 @@ export function useAIChat() {
       });
       messages.value.push(userMessage);
 
+      // Create placeholder assistant message for streaming
+      const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        model: currentModel.value,
+        tokens: {
+          prompt: 0,
+          completion: 0,
+          total: 0,
+        },
+        isStreaming: true,
+      };
+      messages.value.push(assistantMessage);
+
       // Get AI response using OpenRouter
       console.log("🤖 useAIChat: Requesting AI response...");
       const response = await openRouter.sendMessage(content, {
         model: currentModel.value,
         temperature: temperature.value,
         includedFiles,
+        conversationHistory: messages.value.slice(0, -1), // Exclude the placeholder message
+        onToken: (token) => {
+          // Update the streaming message content
+          const messageIndex = messages.value.findIndex(
+            (m) => m.id === assistantMessage.id
+          );
+          if (messageIndex !== -1) {
+            const updatedMessage = { ...messages.value[messageIndex] };
+            updatedMessage.content += token;
+            messages.value[messageIndex] = updatedMessage;
+            // Force Vue to update the UI
+            messages.value = [...messages.value];
+          }
+        },
       });
 
       console.log("✅ useAIChat: Got AI response:", {
@@ -100,14 +136,14 @@ export function useAIChat() {
         cost: response.cost,
       });
 
-      // Create assistant message
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: response.content,
-        timestamp: new Date().toISOString(),
-        model: currentModel.value,
-        tokens: response.usage
+      // Update the assistant message with final content and metadata
+      const finalMessageIndex = messages.value.findIndex(
+        (m) => m.id === assistantMessage.id
+      );
+      if (finalMessageIndex !== -1) {
+        const finalMessage = { ...messages.value[finalMessageIndex] };
+        finalMessage.content = response.content;
+        finalMessage.tokens = response.usage
           ? {
               prompt: response.usage.prompt_tokens || 0,
               completion: response.usage.completion_tokens || 0,
@@ -117,22 +153,40 @@ export function useAIChat() {
               prompt: 0,
               completion: 0,
               total: 0,
-            },
-        cost: response.cost || 0,
+            };
+        finalMessage.cost = response.cost || 0;
+        finalMessage.isStreaming = false;
+        messages.value[finalMessageIndex] = finalMessage;
+        // Force Vue to update the UI with final message
+        messages.value = [...messages.value];
+      }
+
+      // Update chat stats with user message tokens
+      const newUserStats = {
+        promptTokens: chatStats.value.promptTokens + estimatedTokens,
+        completionTokens: chatStats.value.completionTokens,
+        cost: chatStats.value.cost + estimatedCost,
+        totalMessages: messages.value.length,
       };
+      chatStats.value = newUserStats;
 
-      console.log("📝 useAIChat: Adding assistant message:", assistantMessage);
-      messages.value.push(assistantMessage);
-
-      // Update chat stats
+      // Update chat stats with AI response
       if (response.usage) {
-        console.log("📊 useAIChat: Updating chat stats...");
-        chatStats.value.promptTokens += response.usage.prompt_tokens || 0;
-        chatStats.value.completionTokens +=
-          response.usage.completion_tokens || 0;
-        chatStats.value.cost += response.cost || 0;
-        chatStats.value.totalMessages = messages.value.length;
-        console.log("✅ useAIChat: Updated chat stats:", chatStats.value);
+        console.log("📊 useAIChat: Updating chat stats with response:", {
+          usage: response.usage,
+          cost: response.cost,
+          currentStats: chatStats.value,
+        });
+
+        chatStats.value = {
+          promptTokens:
+            chatStats.value.promptTokens + (response.usage.prompt_tokens || 0),
+          completionTokens:
+            chatStats.value.completionTokens +
+            (response.usage.completion_tokens || 0),
+          cost: chatStats.value.cost + (response.cost || 0),
+          totalMessages: messages.value.length,
+        };
       }
 
       // Save to Supabase if configured
@@ -188,18 +242,48 @@ export function useAIChat() {
 
       if (dbError) throw dbError;
 
-      // Update state
+      // Update state with proper cost preservation
       messages.value = chat.messages.map((m: ChatMessage) => ({
         ...m,
         timestamp: m.timestamp || new Date().toISOString(),
+        model: m.model || currentModel.value, // Ensure model is preserved
+        tokens: m.tokens || {
+          prompt: 0,
+          completion: 0,
+          total: 0,
+        },
+        cost: m.cost || 0,
       }));
+
+      // Recalculate chat stats from actual message data
+      const stats = messages.value.reduce(
+        (acc, msg) => {
+          // Get the correct cost for this message's model
+          const modelCost = openRouter.getModelCost(
+            msg.model || currentModel.value
+          );
+          const msgCost = msg.tokens?.total
+            ? (msg.tokens.total * modelCost) / 1000000
+            : msg.cost || 0;
+
+          return {
+            promptTokens: acc.promptTokens + (msg.tokens?.prompt || 0),
+            completionTokens:
+              acc.completionTokens + (msg.tokens?.completion || 0),
+            cost: acc.cost + msgCost,
+            totalMessages: acc.totalMessages + 1,
+          };
+        },
+        {
+          promptTokens: 0,
+          completionTokens: 0,
+          cost: 0,
+          totalMessages: 0,
+        }
+      );
+
       currentModel.value = chat.metadata?.lastModel || currentModel.value;
-      chatStats.value = chat.metadata?.stats || {
-        promptTokens: 0,
-        completionTokens: 0,
-        cost: 0,
-        totalMessages: messages.value.length,
-      };
+      chatStats.value = stats;
 
       return chat;
     } catch (err) {

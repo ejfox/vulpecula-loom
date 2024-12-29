@@ -80,15 +80,16 @@
           'bg-white dark:bg-gray-950 overflow-hidden flex flex-col',
           isMobile ? 'fixed inset-y-0 right-0 z-40 w-80 mt-10' : 'w-96 flex-shrink-0'
         ]">
-          <ContextAlchemyPanel v-model:isContextPanelOpen="isContextPanelOpen" />
+          <ContextAlchemyPanel v-model:isContextPanelOpen="isContextPanelOpen" :messages="messages"
+            :chat-stats="chatStats" @prune-before="handlePruneHistory" @remove-document="handleRemoveDocument" />
         </div>
       </Transition>
     </div>
 
     <!-- Settings Modal -->
     <SettingsModal v-model="isSettingsOpen" v-model:theme="theme" v-model:showProgressBar="showProgressBar"
-      v-model:showOnlyPinnedModels="preferences.showOnlyPinnedModels" :available-models="openRouter.availableModels.value"
-      @validate-api-key="validateApiKey" />
+      v-model:showOnlyPinnedModels="preferences.showOnlyPinnedModels"
+      :available-models="openRouter.availableModels.value" @validate-api-key="validateApiKey" />
   </div>
 </template>
 
@@ -719,6 +720,47 @@ watch(() => openRouter.availableModels.value, (newModels) => {
     last: newModels[newModels.length - 1]
   })
 }, { immediate: true, deep: true })
+
+const handlePruneHistory = (prunePoint: { messageNumber: number }) => {
+  // Keep only messages after the prune point
+  messages.value = messages.value.slice(prunePoint.messageNumber - 1)
+
+  // Update chat stats
+  chatStats.value = {
+    promptTokens: messages.value.reduce((sum, msg) => sum + (msg.tokens?.prompt || 0), 0),
+    completionTokens: messages.value.reduce((sum, msg) => sum + (msg.tokens?.completion || 0), 0),
+    cost: messages.value.reduce((sum, msg) => sum + (msg.cost || 0), 0),
+    totalMessages: messages.value.length
+  }
+
+  // Save updated chat to Supabase if configured
+  if (supabase && currentChatId.value) {
+    updateChatHistory(currentChatId.value, messages.value)
+  }
+}
+
+const handleRemoveDocument = (documentPath: string) => {
+  // Remove document from all messages that include it
+  messages.value = messages.value.map(msg => {
+    if (msg.includedFiles) {
+      msg.includedFiles = msg.includedFiles.filter(f => f.path !== documentPath)
+    }
+    return msg
+  })
+
+  // Update chat stats
+  chatStats.value = {
+    promptTokens: messages.value.reduce((sum, msg) => sum + (msg.tokens?.prompt || 0), 0),
+    completionTokens: messages.value.reduce((sum, msg) => sum + (msg.tokens?.completion || 0), 0),
+    cost: messages.value.reduce((sum, msg) => sum + (msg.cost || 0), 0),
+    totalMessages: messages.value.length
+  }
+
+  // Save updated chat to Supabase if configured
+  if (supabase && currentChatId.value) {
+    updateChatHistory(currentChatId.value, messages.value)
+  }
+}
 </script>
 
 <style>

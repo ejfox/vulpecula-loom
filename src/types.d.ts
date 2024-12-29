@@ -48,18 +48,24 @@ export interface OpenRouterResponse {
     total_tokens: number;
   };
   cost?: number;
+  model?: string;
 }
 
 // Chat Types
 export interface ChatMessage {
   id?: string;
-  role: "system" | "user" | "assistant";
+  role: "user" | "assistant";
   content: string;
-  timestamp: string;
+  timestamp?: string;
   model?: string;
-  tokens?: any;
-  cost?: any;
+  tokens?: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+  cost?: number;
   includedFiles?: IncludedFile[];
+  isStreaming?: boolean;
 }
 
 export interface MessageWithFiles {

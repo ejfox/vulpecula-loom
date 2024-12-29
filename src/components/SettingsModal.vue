@@ -268,8 +268,7 @@ watch(() => props.modelValue, (isOpen) => {
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   OpenRouter API Key
                 </label>
-                <input :value="tempApiKey" @input="handleApiKeyChange" type="password"
-                  class="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input :value="tempApiKey" @input="handleApiKeyChange" type="password" class="input-base" />
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   Get your API key from <a href="#" @click.prevent="shell?.openExternal?.('https://openrouter.ai/keys')"
                     class="text-blue-500 hover:text-blue-400">openrouter.ai/keys</a>
@@ -286,8 +285,7 @@ watch(() => props.modelValue, (isOpen) => {
                 </label>
                 <div class="flex gap-2">
                   <input :value="obsidianVaultPath" readonly type="text"
-                    placeholder="Select your Obsidian vault folder..."
-                    class="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                    placeholder="Select your Obsidian vault folder..." class="input-base" />
                   <button @click="selectObsidianVault" :disabled="isSelectingVault"
                     class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     {{ isSelectingVault ? 'Selecting...' : 'Select Folder' }}
@@ -307,7 +305,7 @@ watch(() => props.modelValue, (isOpen) => {
                   Theme
                 </label>
                 <select :value="theme" @change="$emit('update:theme', ($event.target as HTMLSelectElement).value)"
-                  class="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  class="select-base">
                   <option value="system">System</option>
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
@@ -322,8 +320,7 @@ watch(() => props.modelValue, (isOpen) => {
                 <div class="flex items-center">
                   <input :checked="showProgressBar"
                     @change="$emit('update:showProgressBar', ($event.target as HTMLInputElement).checked)"
-                    type="checkbox"
-                    class="h-4 w-4 text-blue-500 rounded border-gray-300 dark:border-gray-700 focus:ring-blue-500" />
+                    type="checkbox" class="checkbox-base" />
                   <label class="ml-2 block text-sm text-gray-900 dark:text-white">
                     Show Progress Bar
                   </label>
@@ -338,8 +335,7 @@ watch(() => props.modelValue, (isOpen) => {
                 <div class="flex items-center">
                   <input :checked="preferences.showOnlyPinnedModels"
                     @change="preferences.showOnlyPinnedModels = ($event.target as HTMLInputElement).checked"
-                    type="checkbox"
-                    class="h-4 w-4 text-blue-500 rounded border-gray-300 dark:border-gray-700 focus:ring-blue-500" />
+                    type="checkbox" class="checkbox-base" />
                   <label class="ml-2 block text-sm text-gray-900 dark:text-white">
                     Show only pinned models in chat sidebar
                   </label>
@@ -353,12 +349,22 @@ watch(() => props.modelValue, (isOpen) => {
 
           <!-- Models Tab -->
           <div v-if="currentTab === 'models'" class="space-y-8">
+            <!-- Token Cost Notation Explainer -->
+            <div class="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 text-sm">
+              <h4 class="font-medium text-blue-700 dark:text-blue-300 mb-2">Understanding Token Cost Notation</h4>
+              <div class="space-y-2 text-blue-600 dark:text-blue-400">
+                <p><code class="font-mono">$0.02/tok</code> - Cost in dollars per token (for costs ≥ $0.01)</p>
+                <p><code class="font-mono">0.5¢/tok</code> - Cost in cents per token (for costs ≥ $0.0001)</p>
+                <p><code class="font-mono">2.5¢/KTok</code> - Cost in cents per thousand tokens (for smaller costs)</p>
+                <p><code class="font-mono">1.2¢/GTok</code> - Cost in cents per million tokens (for tiny costs)</p>
+              </div>
+            </div>
+
             <div class="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {{ availableModels.length }} models available
             </div>
-            <ModelSettings 
-              :available-models="availableModels"
-              :show-only-pinned-models="preferences.showOnlyPinnedModels" 
+            <ModelSettings :available-models="availableModels"
+              :show-only-pinned-models="preferences.showOnlyPinnedModels"
               @update:show-only-pinned-models="(value) => preferences.showOnlyPinnedModels = value" />
           </div>
         </template>
@@ -383,7 +389,7 @@ watch(() => props.modelValue, (isOpen) => {
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.7);
+  background-color: rgba(75, 85, 99, 0.7);
 }
 
 /* Dark mode scrollbar */
@@ -393,5 +399,40 @@ watch(() => props.modelValue, (isOpen) => {
 
 :deep(.dark) .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background-color: rgba(75, 85, 99, 0.7);
+}
+
+/* Input Styles */
+.input-base {
+  @apply w-full px-3 py-2;
+  @apply bg-white dark:bg-gray-800/50;
+  @apply border border-gray-300 dark:border-gray-700;
+  @apply rounded-md shadow-sm;
+  @apply text-gray-900 dark:text-gray-100;
+  @apply placeholder-gray-500 dark:placeholder-gray-400;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply transition-colors duration-200;
+}
+
+.select-base {
+  @apply input-base;
+  @apply pr-8;
+  /* Extra padding for the dropdown arrow */
+  @apply appearance-none;
+  @apply bg-no-repeat bg-right;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-size: 1.5em 1.5em;
+}
+
+.checkbox-base {
+  @apply h-4 w-4;
+  @apply rounded;
+  @apply border-gray-300 dark:border-gray-600;
+  @apply text-blue-500 dark:text-blue-400;
+  @apply bg-white dark:bg-gray-800/50;
+  @apply focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply transition-colors duration-200;
 }
 </style>

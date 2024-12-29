@@ -1,152 +1,93 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
-import type { ChatMessageProps } from '../types'
-import ChatCodeblock from './ChatCodeblock.vue'
+import { computed } from 'vue'
+import { Icon } from '@iconify/vue'
 import { marked } from 'marked'
+import { formatDistanceToNow } from 'date-fns'
 import DOMPurify from 'dompurify'
+import type { ChatMessage } from '../types'
 
 const props = defineProps<{
-  message: {
-    id?: string
-    role: 'system' | 'user' | 'assistant'
-    content: string
-    timestamp: string
-    model?: string
-    tokens?: any
-    cost?: any
-    includedFiles?: any[]
-  }
-  modelName: string
-  index: number
-  currentChatId: string | null
-  isLoading?: boolean
-  showActions?: boolean
-  formatModelCost?: (cost: any) => string
+  message: ChatMessage;
+  modelName: string;
+  formatModelCost: (modelId: string, cost: number) => string;
 }>()
 
-const emit = defineEmits<{
-  (e: 'copy', message: any): void
-  (e: 'delete', message: any): void
-  (e: 'fork', message: any): void
-  (e: 'open-actions', message: any): void
-}>()
-
-// Process markdown content to separate regular content and code blocks
-const processedContent = computed(() => {
-  console.log('Original message content:', props.message.content)
-
-  // Create a custom tokenizer
-  const tokens = marked.lexer(props.message.content)
-  const parts = []
-
-  for (const token of tokens) {
-    if (token.type === 'code') {
-      parts.push({
-        type: 'code',
-        code: token.text,
-        language: token.lang || ''
-      })
-    } else {
-      const html = marked.parser([token])
-      parts.push({
-        type: 'content',
-        html: DOMPurify.sanitize(html, {
-          ADD_ATTR: ['onclick'],
-          ADD_TAGS: ['button'],
-        })
-      })
-    }
-  }
-
-  console.log('Final processed parts:', parts)
-  return parts
+const renderedContent = computed(() => {
+  const content = props.message.content || ''
+  const html = marked.parse(content)
+  return DOMPurify.sanitize(String(html))
 })
 
-// Add keyboard shortcut handling
-const handleKeydown = (e: KeyboardEvent) => {
-  // Alt/Option + F to fork at current message
-  if (e.key === 'f' && (e.altKey || e.metaKey)) {
-    e.preventDefault()
-    emit('fork', props.message)
-  }
+const formatTimeAgo = (date: string | undefined) => {
+  if (!date) return ''
+  return formatDistanceToNow(new Date(date), { addSuffix: true })
 }
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
-})
 </script>
 
 <template>
-  <div :class="[
-    'max-w-[85%]',
-    'group relative',
-    message.role === 'user' ? 'ml-auto' : ''
-  ]">
-    <!-- Message Metadata -->
-    <div class="flex items-center justify-between text-[10px] leading-tight text-gray-400 dark:text-gray-500 mb-0.5">
-      <div class="flex items-center gap-1.5 min-w-0">
-        <template v-if="message.role === 'assistant'">
-          <span class="font-medium flex-shrink-0">AI</span>
-          <span class="flex-shrink-0">·</span>
-          <span class="font-mono truncate">{{ message.model || modelName }}</span>
-          <span v-if="message.tokens" class="flex items-center gap-1.5 flex-shrink-0">
-            <span>·</span>
-            <span class="font-mono">{{ message.tokens.total }}tok</span>
-            <span v-if="message.cost" class="text-blue-500 dark:text-blue-400 font-mono">
-              (${{ Number(message.cost).toFixed(4) }})
-            </span>
-          </span>
-        </template>
-      </div>
-      <div class="flex items-center gap-1.5 flex-shrink-0">
-        <time class="font-mono">{{ new Date(message.timestamp).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit'
-        }) }}</time>
+  <div class="group relative flex gap-3 py-3" :class="{
+    'opacity-50': message.isStreaming
+  }">
+    <!-- Role Icon -->
+    <div class="flex h-8 w-8 flex-none items-center justify-center rounded-lg" :class="{
+      'bg-blue-500/10 text-blue-400': message.role === 'assistant',
+      'bg-gray-500/10 text-gray-400': message.role === 'user'
+    }">
+      <Icon v-if="message.role === 'assistant'" icon="carbon:bot" class="h-5 w-5" />
+      <Icon v-else icon="carbon:user" class="h-5 w-5" />
+    </div>
 
-        <!-- Message Actions -->
-        <div class="flex items-center -mr-1">
-          <button title="Fork chat from here (⌥F)"
-            class="p-0.5 rounded opacity-0 group-hover:opacity-100 bg-white dark:bg-gray-800"
-            @click.stop.prevent="$emit('fork', message)">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-          </button>
-          <button class="p-0.5 rounded opacity-0 group-hover:opacity-100 bg-white dark:bg-gray-800"
-            @click.stop.prevent="$emit('copy', message)">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </button>
-          <button v-if="message.role === 'user'"
-            class="p-0.5 rounded opacity-0 group-hover:opacity-100 bg-white dark:bg-gray-800"
-            @click.stop.prevent="$emit('delete', message)">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+    <!-- Message Content -->
+    <div class="flex-1 space-y-2 overflow-hidden">
+      <!-- Role & Timestamp -->
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-medium text-white/90">
+          {{ message.role === 'assistant' ? modelName : 'You' }}
+        </span>
+        <span class="text-xs text-white/40">
+          {{ formatTimeAgo(message.timestamp) }}
+        </span>
+      </div>
+
+      <!-- Content -->
+      <div class="prose prose-sm prose-invert max-w-none">
+        <div v-html="renderedContent"></div>
+      </div>
+
+      <!-- Streaming Indicator -->
+      <div v-if="message.isStreaming" class="flex items-center gap-2 text-xs text-white/40">
+        <div class="animate-pulse">Generating response...</div>
+        <div class="flex space-x-1">
+          <div class="h-1.5 w-1.5 rounded-full bg-white/40 animate-[bounce_1s_infinite]"></div>
+          <div class="h-1.5 w-1.5 rounded-full bg-white/40 animate-[bounce_1s_infinite_0.2s]"></div>
+          <div class="h-1.5 w-1.5 rounded-full bg-white/40 animate-[bounce_1s_infinite_0.4s]"></div>
+        </div>
+      </div>
+
+      <!-- Message Stats -->
+      <div class="flex items-center gap-4 text-xs text-white/40">
+        <span>{{ message.tokens?.total || Math.ceil(message.content.length / 4) }} tokens</span>
+        <span>{{ formatModelCost(message.model || 'anthropic/claude-3-sonnet', message.cost ||
+          (Math.ceil(message.content.length / 4) * 0.000001)) }}</span>
+      </div>
+
+      <!-- Included Files -->
+      <div v-if="message.includedFiles?.length" class="mt-2 space-y-2">
+        <div v-for="file in message.includedFiles" :key="file.path" class="rounded bg-white/5 px-3 py-2 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-white/80">{{ file.title }}</span>
+            <span class="text-xs text-white/40">{{ file.path }}</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Message Content -->
-    <div class="p-1.5 sm:p-2 rounded-md prose prose-sm max-w-none" :class="message.role === 'user'
-      ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-900 dark:text-white'
-      : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'">
-      <template v-for="(part, index) in processedContent" :key="index">
-        <!-- Regular content -->
-        <div v-if="part.type === 'content'" v-html="part.html" class="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0" />
-        <!-- Code block -->
-        <ChatCodeblock v-else :code="String(part.code)" :language="part.language" class="my-2" />
-      </template>
+    <!-- Actions Menu -->
+    <div class="absolute right-0 top-3">
+      <button v-if="!message.isStreaming" @click="$emit('open-actions')"
+        class="p-1 text-white/40 hover:text-white/60 transition-colors opacity-0 group-hover:opacity-100">
+        <Icon icon="carbon:overflow-menu-horizontal" class="h-5 w-5" />
+      </button>
     </div>
   </div>
 </template>
