@@ -47,7 +47,7 @@
     "vue-tsc": "^2.2.0"
   },
   "dependencies": {
-    "@iconify/json": "^2.2.282",
+    "@iconify/json": "^2.2.290",
     "@iconify/vue": "^4.2.0",
     "@supabase/supabase-js": "^2.46.1",
     "@tailwindcss/typography": "^0.5.15",
