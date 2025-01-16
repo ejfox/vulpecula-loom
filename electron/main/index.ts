@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { setupIpcHandlers } from "../ipc";
 
@@ -86,4 +86,21 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (win === null) createWindow();
+});
+
+// Add window control handlers
+ipcMain.handle("window-minimize", () => {
+  win?.minimize();
+});
+
+ipcMain.handle("window-maximize", () => {
+  if (win?.isMaximized()) {
+    win?.unmaximize();
+  } else {
+    win?.maximize();
+  }
+});
+
+ipcMain.handle("window-close", () => {
+  win?.close();
 });

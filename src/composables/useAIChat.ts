@@ -1,6 +1,7 @@
 import { ref, computed } from "vue";
 import { useOpenRouter } from "./useOpenRouter";
 import { useSupabase } from "./useSupabase";
+import { useActiveUser } from "./useActiveUser";
 import type {
   ChatMessage,
   TokenUsage,
@@ -27,6 +28,7 @@ export function useAIChat() {
   // Initialize composables
   const openRouter = useOpenRouter();
   const { supabase, updateChatHistory } = useSupabase();
+  const { isAuthenticated } = useActiveUser();
 
   // Computed
   const modelName = computed(() => currentModel.value.split("/").pop() || "");
@@ -40,8 +42,19 @@ export function useAIChat() {
   const availableModels = computed(() => openRouter.availableModels.value);
   const enabledModels = computed(() => openRouter.enabledModels.value);
 
+  // Helper function to check auth
+  const checkAuth = () => {
+    if (!isAuthenticated.value) {
+      const err = new Error("User not authenticated");
+      error.value = err.message;
+      throw err;
+    }
+  };
+
   // Send a message and get a response
   const sendMessage = async (message: string | MessageWithFiles) => {
+    checkAuth(); // Check auth before proceeding
+
     const content = typeof message === "string" ? message : message.content;
     const includedFiles =
       typeof message === "string" ? undefined : message.includedFiles;
@@ -208,6 +221,7 @@ export function useAIChat() {
 
   // Chat management functions
   const clearChat = () => {
+    checkAuth(); // Check auth before proceeding
     messages.value = [];
     currentChatId.value = null;
     chatStats.value = {
@@ -219,16 +233,19 @@ export function useAIChat() {
   };
 
   const setModel = (modelId: string) => {
+    checkAuth(); // Check auth before proceeding
     if (availableModels.value.find((m) => m.id === modelId)) {
       currentModel.value = modelId;
     }
   };
 
   const updateTemperature = (value: number) => {
+    checkAuth(); // Check auth before proceeding
     temperature.value = value;
   };
 
   const loadChat = async (id: string) => {
+    checkAuth(); // Check auth before proceeding
     try {
       isLoading.value = true;
       currentChatId.value = id;
@@ -296,6 +313,7 @@ export function useAIChat() {
   };
 
   const exportChat = () => {
+    checkAuth(); // Check auth before proceeding
     const exportData = {
       messages: messages.value,
       model: currentModel.value,

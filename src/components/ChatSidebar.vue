@@ -1,23 +1,27 @@
 <template>
   <aside class="flex flex-col h-full overflow-hidden text-sm bg-white dark:bg-gray-950">
     <!-- Header -->
-    <div class="px-4 py-3 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-      <h1 class="font-medium text-gray-900 dark:text-white">Vulpecula</h1>
-      <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">Powered by OpenRouter</p>
+    <div class="px-4 py-3 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 app-drag-region">
+      <h1 class="font-medium text-gray-900 dark:text-white select-none">Vulpecula</h1>
+      <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 select-none">Powered by OpenRouter</p>
     </div>
 
     <!-- Scrollable Content Area -->
     <div class="flex-1 overflow-y-auto p-3 space-y-4">
       <!-- New Chat Button -->
       <div class="sticky top-0 bg-white dark:bg-gray-950 pb-3 z-50">
-        <button @click="emit('new-chat')" class="w-full px-3 py-2 flex items-center justify-center gap-2 
-                 bg-blue-500 hover:bg-blue-600 
-                 text-white rounded-lg transition-colors">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-          <span class="font-medium">New Chat</span>
-        </button>
+        <div class="flex gap-2">
+          <button @click="emit('new-chat')" class="flex-1 px-3 py-2 flex items-center justify-center gap-2 
+                   bg-blue-500 hover:bg-blue-600 
+                   text-white rounded-lg transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span class="font-medium">New Chat</span>
+          </button>
+
+          <ChatImport class="flex-shrink-0" />
+        </div>
       </div>
 
       <!-- Chat List -->
@@ -126,6 +130,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { ChatSidebarProps, Chat, OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import logger from '../lib/logger'
+import ChatImport from './ChatImport.vue'
 
 const props = defineProps<{
   chatHistory: Chat[]
@@ -344,5 +349,19 @@ const groupedModels = computed(() => {
 .overflow-y-auto::-webkit-scrollbar-thumb {
   background-color: rgba(156, 163, 175, 0.5);
   border-radius: 2px;
+}
+
+/* Add app drag region */
+.app-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Make sure buttons and interactive elements within the drag region are still clickable */
+.app-drag-region button,
+.app-drag-region input,
+.app-drag-region select {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 </style>

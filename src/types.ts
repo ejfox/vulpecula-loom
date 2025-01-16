@@ -1,0 +1,107 @@
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: string;
+  model?: string;
+  tokens?: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+  cost?: number;
+  includedFiles?: IncludedFile[];
+}
+
+export interface ChatMetadata {
+  lastModel?: string;
+  lastUpdated?: string;
+  messageCount?: number;
+  summary?: string;
+  autoTitle?: string;
+  summaryLastUpdated?: string;
+  stats?: ChatStats;
+  fork?: {
+    parentId: string;
+    forkMessageId: string;
+    forkDepth: number;
+    childIds: string[];
+  };
+  thread?: {
+    name: string;
+    description?: string;
+  };
+}
+
+export interface ChatStats {
+  promptTokens: number;
+  completionTokens: number;
+  cost: number;
+  totalMessages: number;
+}
+
+export interface IncludedFile {
+  path: string;
+  content: string;
+  type: string;
+}
+
+export interface Chat {
+  id: string;
+  user_id: string;
+  title: string | null;
+  messages: ChatMessage[];
+  model: string;
+  metadata: ChatMetadata;
+  thread?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatHistory extends Chat {
+  user_id: string;
+}
+
+export interface Thread {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  chat_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThreadOptions {
+  name: string;
+  description?: string;
+  chat_ids?: string[];
+}
+
+export interface ChatForkOptions {
+  parentId: string;
+  forkMessageId: string;
+  messages: ChatMessage[];
+  newTitle?: string;
+}
+
+export interface NewChat {
+  title: string | null;
+  messages: ChatMessage[];
+  model: string;
+  user_id: string;
+  metadata: ChatMetadata;
+  thread?: string | null;
+}
+
+export interface OpenRouterModel {
+  id: string;
+  name: string;
+  description?: string;
+  context_length: number;
+  pricing: {
+    prompt: string;
+    completion: string;
+  };
+  provider?: string;
+}

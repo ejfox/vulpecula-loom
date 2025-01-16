@@ -431,3 +431,124 @@ src/
    - Consistent file structure
    - Proper documentation
    - Single responsibility principle
+
+## Authentication & Data Security
+
+### Overview
+The application uses Discord OAuth for authentication, managed through Supabase Auth. This ensures secure user authentication and data isolation.
+
+### Setup Requirements
+1. Supabase Project
+   - Create a new project at supabase.com
+   - Enable Discord OAuth provider
+   - Set up proper redirect URLs
+   - Configure RLS policies
+
+2. Environment Variables
+```env
+VITE_SUPABASE_URL=your_project_url
+VITE_SUPABASE_KEY=your_anon_key
+VITE_DISCORD_CLIENT_ID=your_discord_client_id
+```
+
+### Database Schema
+```sql
+-- Enable RLS
+alter table vulpeculachats enable row level security;
+
+-- Create policies
+create policy "Users can read own chats"
+  on vulpeculachats for select
+  using (auth.uid() = user_id);
+
+create policy "Users can create own chats"
+  on vulpeculachats for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update own chats"
+  on vulpeculachats for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete own chats"
+  on vulpeculachats for delete
+  using (auth.uid() = user_id);
+
+-- Add user_id column and index
+alter table vulpeculachats 
+  add column user_id uuid references auth.users(id) not null;
+
+create index idx_vulpeculachats_user_id on vulpeculachats(user_id);
+```
+
+### Authentication Flow
+1. User visits app
+2. `useActiveUser` composable checks auth state
+3. If not authenticated, `DiscordLoginOverlay` is shown
+4. User clicks "Continue with Discord"
+5. OAuth flow completes
+6. User session established
+7. App loads user's personal data
+
+### Security Best Practices
+1. **Data Isolation**
+   - Each user's data is completely isolated
+   - RLS policies enforce access control
+   - No shared data between users
+   - Automatic user_id injection
+
+2. **Session Management**
+   - Secure session storage
+   - Automatic token refresh
+   - Session invalidation on sign out
+   - Cross-tab session sync
+
+3. **Error Handling**
+   - Graceful auth failure handling
+   - Clear error messages
+   - Automatic retry on token refresh
+   - Session recovery attempts
+
+4. **User Experience**
+   - Persistent sessions
+   - Smooth auth flow
+   - Loading states
+   - Error feedback
+
+### Implementation Notes
+
+❌ **DO NOT**:
+- Bypass RLS policies
+- Store sensitive data in `metadata`
+- Share chat IDs between users
+- Cache sensitive user data
+
+✅ **DO**:
+- Always use `user_id` filtering
+- Validate auth state before operations
+- Handle auth errors gracefully
+- Use typed user metadata
+
+### Production Checklist
+1. **Database**
+   - [ ] RLS policies enabled
+   - [ ] Indexes created
+   - [ ] Backups configured
+   - [ ] Monitoring set up
+
+2. **Authentication**
+   - [ ] Discord OAuth configured
+   - [ ] Redirect URLs set
+   - [ ] Error pages styled
+   - [ ] Rate limiting enabled
+
+3. **Security**
+   - [ ] Environment variables secured
+   - [ ] API keys rotated
+   - [ ] SSL enforced
+   - [ ] CORS configured
+
+4. **Monitoring**
+   - [ ] Error tracking set up
+   - [ ] Performance monitoring
+   - [ ] Usage analytics
+   - [ ] Alerting configured

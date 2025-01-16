@@ -13,6 +13,7 @@ import type {
   NewChat,
 } from "../types";
 import { useStore } from "../lib/store";
+import { useActiveUser } from "./useActiveUser";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -24,7 +25,10 @@ export interface UseSupabaseReturn {
   isConfigured: ComputedRef<boolean>;
   hasValidSupabaseConfig: ComputedRef<boolean>;
   saveChatHistory: (
-    history: Omit<ChatHistory, "id" | "created_at" | "updated_at"> & {
+    history: Omit<
+      ChatHistory,
+      "id" | "created_at" | "updated_at" | "user_id"
+    > & {
       thread?: string;
     }
   ) => Promise<ChatHistory>;
@@ -54,6 +58,8 @@ export interface UseSupabaseReturn {
 
 export function useSupabase() {
   const store = useStore();
+  const { userId } = useActiveUser();
+
   const isConfigured = computed(() => {
     const hasUrl = !!import.meta.env.VITE_SUPABASE_URL;
     const hasKey = !!import.meta.env.VITE_SUPABASE_KEY;
@@ -63,17 +69,23 @@ export function useSupabase() {
   const hasValidSupabaseConfig = ref(true);
 
   async function saveChatHistory(
-    history: Omit<ChatHistory, "id" | "created_at" | "updated_at"> & {
+    history: Omit<
+      ChatHistory,
+      "id" | "created_at" | "updated_at" | "user_id"
+    > & {
       thread?: string;
     }
   ) {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       console.log("Saving chat history:", history);
       const { data, error } = await supabase
         .from("vulpeculachats")
         .insert([
           {
             ...history,
+            user_id: userId.value,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             thread: history.thread || null,
@@ -97,6 +109,8 @@ export function useSupabase() {
     metadata?: ChatHistory["metadata"]
   ) {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       console.log("Updating chat history:", { id, messages, metadata });
       const { data, error } = await supabase
         .from("vulpeculachats")
@@ -106,6 +120,7 @@ export function useSupabase() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
+        .eq("user_id", userId.value)
         .select()
         .single();
 
@@ -120,11 +135,14 @@ export function useSupabase() {
 
   async function loadChatHistory(id: string) {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       console.log("Loading chat history:", id);
       const { data, error } = await supabase
         .from("vulpeculachats")
         .select("*")
         .eq("id", id)
+        .eq("user_id", userId.value)
         .single();
 
       if (error) throw error;
@@ -138,6 +156,8 @@ export function useSupabase() {
 
   async function loadChatHistories(thread?: string) {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       console.group("Loading chat histories");
       console.log("Supabase config:", {
         url: import.meta.env.VITE_SUPABASE_URL,
@@ -151,6 +171,7 @@ export function useSupabase() {
       let query = supabase
         .from("vulpeculachats")
         .select("*")
+        .eq("user_id", userId.value)
         .order("updated_at", { ascending: false });
 
       if (thread) {
@@ -190,11 +211,13 @@ export function useSupabase() {
 
   async function deleteAllChats() {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       console.log("Deleting all chats");
       const { error } = await supabase
         .from("vulpeculachats")
         .delete()
-        .neq("id", "");
+        .eq("user_id", userId.value);
 
       if (error) throw error;
       console.log("All chats deleted successfully");
@@ -209,13 +232,16 @@ export function useSupabase() {
     metadata: Partial<ChatMetadata>
   ) => {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       const { data, error } = await supabase
-        .from("chats")
+        .from("vulpeculachats")
         .update({
           metadata: metadata,
           updated_at: new Date().toISOString(),
         })
         .eq("id", chatId)
+        .eq("user_id", userId.value)
         .select();
 
       if (error) throw error;
@@ -233,11 +259,14 @@ export function useSupabase() {
     newTitle,
   }: ChatForkOptions): Promise<Chat | null> => {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       // Get parent chat to update its childIds
       const { data: parentChat } = await supabase
         .from("vulpeculachats")
         .select("*")
         .eq("id", parentId)
+        .eq("user_id", userId.value)
         .single();
 
       if (!parentChat) throw new Error("Parent chat not found");
@@ -247,6 +276,7 @@ export function useSupabase() {
         title: newTitle || `Fork of ${parentChat.title || "Untitled Chat"}`,
         messages,
         model: parentChat.model,
+        user_id: userId.value,
         metadata: {
           lastModel: parentChat.metadata.lastModel,
           lastUpdated: new Date().toISOString(),
@@ -413,11 +443,14 @@ export function useSupabase() {
 
   async function deleteChat(id: string) {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       console.log("Deleting chat:", id);
       const { error } = await supabase
         .from("vulpeculachats")
         .delete()
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", userId.value);
 
       if (error) throw error;
       console.log("Chat deleted successfully");

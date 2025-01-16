@@ -1,28 +1,16 @@
 import { ref, computed } from "vue";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, Chat } from "../types";
 
 export function useChat() {
-  const messages = ref<ChatMessage[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hello, how can I help you today?",
-      timestamp: new Date("2024-03-20T10:30:00").toISOString(),
-    },
-    {
-      id: "2",
-      role: "user",
-      content: "I'm looking for information on your services.",
-      timestamp: new Date("2024-03-20T10:32:00").toISOString(),
-    },
-  ]);
-
+  const messages = ref<ChatMessage[]>([]);
   const newMessage = ref("");
+  const currentChat = ref<Chat | null>(null);
 
   const sortedMessages = computed(() => {
     return [...messages.value].sort(
       (a, b) =>
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        new Date(a.timestamp || new Date()).getTime() -
+        new Date(b.timestamp || new Date()).getTime()
     );
   });
 
@@ -48,10 +36,34 @@ export function useChat() {
     newMessage.value = ""; // Clear input
   }
 
+  function importMessages(newMessages: ChatMessage[]): Chat {
+    // Create a new chat with the imported messages
+    const newChat: Chat = {
+      id: crypto.randomUUID(),
+      title: "Imported Chat",
+      messages: newMessages,
+      model: "openai/gpt-3.5-turbo", // Default model
+      metadata: {
+        lastUpdated: new Date().toISOString(),
+        messageCount: newMessages.length,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Set as current chat
+    currentChat.value = newChat;
+    messages.value = newMessages;
+
+    return newChat;
+  }
+
   return {
     messages: sortedMessages,
     newMessage,
+    currentChat,
     sendMessage,
     formatTimestamp,
+    importMessages,
   };
 }

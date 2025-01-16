@@ -207,6 +207,9 @@ export interface IpcChannels {
   "write-file": (path: string, content: string) => Promise<void>;
   "main-process-message": (message: string) => void;
   "auth-callback": (data: any) => void;
+  "window-minimize": () => Promise<void>;
+  "window-maximize": () => Promise<void>;
+  "window-close": () => Promise<void>;
 }
 
 export interface ElectronAPI {
