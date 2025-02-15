@@ -105,10 +105,8 @@ onMounted(() => {
         <button @click.stop="showUserMenu = !showUserMenu"
           class="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <!-- User Avatar -->
-          <img v-if="user?.user_metadata?.avatar_url" :src="user.user_metadata.avatar_url"
-            :alt="user.user_metadata.full_name" class="w-6 h-6 rounded-full" />
           <span class="text-sm text-gray-700 dark:text-gray-300">
-            {{ user?.user_metadata?.full_name || 'User' }}
+            {{ user?.email || 'User' }}
           </span>
           <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -122,16 +120,8 @@ onMounted(() => {
             <!-- User Info -->
             <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
               <div class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ user?.user_metadata?.full_name }}
-              </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
                 {{ user?.email }}
               </div>
-            </div>
-
-            <!-- Account Actions -->
-            <div class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-              Signed in with Discord
             </div>
 
             <!-- Logout Button -->

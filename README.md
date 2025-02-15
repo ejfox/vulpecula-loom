@@ -438,117 +438,163 @@ src/
 The application uses Discord OAuth for authentication, managed through Supabase Auth. This ensures secure user authentication and data isolation.
 
 ### Setup Requirements
-1. Supabase Project
-   - Create a new project at supabase.com
-   - Enable Discord OAuth provider
-   - Set up proper redirect URLs
-   - Configure RLS policies
 
-2. Environment Variables
+#### 1. Supabase Project Setup
+1. Create a new project at supabase.com
+2. Enable Discord OAuth provider:
+   - Add Discord application credentials
+   - Configure allowed callback URLs:
+     ```
+     http://localhost:5173/auth/callback  # Development
+     https://your-domain.com/auth/callback  # Production
+     ```
+3. Configure RLS policies (see Database Schema section)
+4. Copy project credentials for environment setup
+
+#### 2. Environment Configuration
+Create a `.env` file in the project root:
 ```env
+# Supabase Configuration
 VITE_SUPABASE_URL=your_project_url
-VITE_SUPABASE_KEY=your_anon_key
+VITE_SUPABASE_KEY=your_anon_key  # Public anon key, NOT service_role key
+
+# Discord OAuth
 VITE_DISCORD_CLIENT_ID=your_discord_client_id
 ```
 
 ### Database Schema
+
+#### Table Structure
 ```sql
 -- Enable RLS
-alter table vulpeculachats enable row level security;
+alter table public.vulpeculachats enable row level security;
 
--- Create policies
-create policy "Users can read own chats"
-  on vulpeculachats for select
-  using (auth.uid() = user_id);
+-- Create table
+create table public.vulpeculachats (
+  id uuid not null default gen_random_uuid(),
+  title text null,
+  messages jsonb not null default '[]'::jsonb,
+  model text not null,
+  metadata jsonb null default '{}'::jsonb,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  user_id uuid null,
+  thread text null,
+  constraint vulpeculachats_pkey primary key (id),
+  constraint vulpeculachats_user_id_fkey foreign key (user_id) references auth.users (id)
+) tablespace pg_default;
 
-create policy "Users can create own chats"
-  on vulpeculachats for insert
-  with check (auth.uid() = user_id);
-
-create policy "Users can update own chats"
-  on vulpeculachats for update
-  using (auth.uid() = user_id);
-
-create policy "Users can delete own chats"
-  on vulpeculachats for delete
-  using (auth.uid() = user_id);
-
--- Add user_id column and index
-alter table vulpeculachats 
-  add column user_id uuid references auth.users(id) not null;
-
-create index idx_vulpeculachats_user_id on vulpeculachats(user_id);
+-- Create index for efficient chat history sorting
+create index if not exists idx_vulpeculachats_updated_at 
+  on public.vulpeculachats using btree (updated_at) 
+  tablespace pg_default;
 ```
+
+#### Row Level Security (RLS) Policies
+```sql
+-- Allow users to read their own chats and any anonymous chats
+create policy "Users can read their own chats"
+  on public.vulpeculachats for select
+  using (
+    auth.uid() = user_id 
+    or user_id is null -- Allow reading chats with no user_id
+  );
+
+-- Allow users to create chats, either owned or anonymous
+create policy "Users can create chats"
+  on public.vulpeculachats for insert
+  with check (
+    auth.uid() = user_id 
+    or user_id is null -- Allow creating chats with no user_id
+  );
+
+-- Allow users to update their own chats and anonymous chats
+create policy "Users can update their own chats"
+  on public.vulpeculachats for update
+  using (
+    auth.uid() = user_id 
+    or user_id is null -- Allow updating chats with no user_id
+  );
+
+-- Allow users to delete their own chats and anonymous chats
+create policy "Users can delete their own chats"
+  on public.vulpeculachats for delete
+  using (
+    auth.uid() = user_id 
+    or user_id is null -- Allow deleting chats with no user_id
+  );
+```
+
+#### Table Fields
+**vulpeculachats**: Stores all chat sessions
+- `id`: UUID primary key, auto-generated
+- `title`: Optional chat title
+- `messages`: JSONB array of messages (defaults to empty array)
+  ```typescript
+  {
+    id: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+    timestamp: string;
+    model?: string;
+    tokens?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    cost?: number;
+    includedFiles?: Array<{
+      path: string;
+      content: string;
+      type: string;
+    }>;
+  }[]
+  ```
+- `model`: AI model identifier (e.g., "anthropic/claude-3-opus-20240229")
+- `metadata`: Optional JSONB object for additional data (defaults to empty object)
+  ```typescript
+  {
+    lastModel?: string;
+    lastUpdated?: string;
+    messageCount?: number;
+    summary?: string;
+    autoTitle?: string;
+    summaryLastUpdated?: string;
+    stats?: {
+      promptTokens: number;
+      completionTokens: number;
+      cost: number;
+      totalMessages: number;
+    };
+  }
+  ```
+- `user_id`: Optional reference to auth.users (nullable for anonymous chats)
+- `thread`: Optional text field for thread identification
+- `created_at/updated_at`: Timestamps with timezone (auto-managed)
+
+#### Security Features
+- Row Level Security (RLS) enabled by default
+- Index on updated_at for efficient chat history queries
+- Full CRUD policies supporting:
+  1. User-owned chats (where user_id = auth.uid())
+  2. Anonymous chats (where user_id is null)
+  3. Proper data isolation between users
+
+#### Implementation Notes
+- Anonymous chats (null user_id) are accessible to all users
+- Each user can only access their own chats plus anonymous chats
+- The updated_at index supports efficient chat history sorting
+- JSONB fields (messages, metadata) support flexible schema evolution
+- Timestamps are automatically managed by Postgres
 
 ### Authentication Flow
 1. User visits app
 2. `useActiveUser` composable checks auth state
-3. If not authenticated, `DiscordLoginOverlay` is shown
-4. User clicks "Continue with Discord"
-5. OAuth flow completes
-6. User session established
-7. App loads user's personal data
-
-### Security Best Practices
-1. **Data Isolation**
-   - Each user's data is completely isolated
-   - RLS policies enforce access control
-   - No shared data between users
-   - Automatic user_id injection
-
-2. **Session Management**
-   - Secure session storage
-   - Automatic token refresh
-   - Session invalidation on sign out
-   - Cross-tab session sync
-
-3. **Error Handling**
-   - Graceful auth failure handling
-   - Clear error messages
-   - Automatic retry on token refresh
-   - Session recovery attempts
-
-4. **User Experience**
-   - Persistent sessions
-   - Smooth auth flow
-   - Loading states
-   - Error feedback
-
-### Implementation Notes
-
-❌ **DO NOT**:
-- Bypass RLS policies
-- Store sensitive data in `metadata`
-- Share chat IDs between users
-- Cache sensitive user data
-
-✅ **DO**:
-- Always use `user_id` filtering
-- Validate auth state before operations
-- Handle auth errors gracefully
-- Use typed user metadata
-
-### Production Checklist
-1. **Database**
-   - [ ] RLS policies enabled
-   - [ ] Indexes created
-   - [ ] Backups configured
-   - [ ] Monitoring set up
-
-2. **Authentication**
-   - [ ] Discord OAuth configured
-   - [ ] Redirect URLs set
-   - [ ] Error pages styled
-   - [ ] Rate limiting enabled
-
-3. **Security**
-   - [ ] Environment variables secured
-   - [ ] API keys rotated
-   - [ ] SSL enforced
-   - [ ] CORS configured
-
-4. **Monitoring**
-   - [ ] Error tracking set up
-   - [ ] Performance monitoring
-   - [ ] Usage analytics
-   - [ ] Alerting configured
+3. If not authenticated:
+   - Shows Discord login option
+   - Handles OAuth redirect
+   - Manages session storage
+4. On successful auth:
+   - Session established
+   - User data loaded
+   - Chat history retrieved

@@ -74,7 +74,7 @@
     <!-- Auth Overlay -->
     <Transition name="fade">
       <div v-if="!isAuthenticated" class="fixed inset-0 z-50 pointer-events-auto">
-        <DiscordLoginOverlay />
+        <LoginOverlay />
       </div>
     </Transition>
   </div>
@@ -87,7 +87,7 @@ import { useActiveUser } from './composables/useActiveUser'
 import { useBreakpoints } from '@vueuse/core'
 import { useTheme } from './composables/useTheme'
 import LoadingOverlay from './components/LoadingOverlay.vue'
-import DiscordLoginOverlay from './components/DiscordLoginOverlay.vue'
+import LoginOverlay from './components/LoginOverlay.vue'
 import TitleBar from './components/TitleBar.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import ChatMetadata from './components/ChatMetadata.vue'

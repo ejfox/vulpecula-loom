@@ -55,29 +55,6 @@ export function useActiveUser() {
     }
   }
 
-  async function signInWithDiscord() {
-    try {
-      loading.value = true;
-      error.value = null;
-
-      const { data, error: authError } = await supabase.auth.signInWithOAuth({
-        provider: "discord",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (authError) throw authError;
-      return true;
-    } catch (err: any) {
-      console.error("Discord sign in error:", err);
-      error.value = err?.message || "Failed to sign in with Discord";
-      return false;
-    } finally {
-      loading.value = false;
-    }
-  }
-
   async function signOut() {
     try {
       loading.value = true;
@@ -107,7 +84,6 @@ export function useActiveUser() {
     error,
     isAuthenticated,
     initialize,
-    signInWithDiscord,
     signOut,
   };
 }
