@@ -6,6 +6,7 @@ import { useStore } from "../lib/store";
 import logger from "../lib/logger";
 import type { ChatMessage, ChatStats, IncludedFile, Chat } from "../types";
 import { useEventBus } from "@vueuse/core";
+import { useDebounceFn } from "@vueuse/core";
 
 // Create event bus for chat updates
 const chatBus = useEventBus("chat-updates");
@@ -36,6 +37,18 @@ export function useAIChat() {
   const { isAuthenticated } = useActiveUser();
   const store = useStore();
 
+  // Add debounced save function inside the composable
+  const debouncedSaveToSupabase = useDebounceFn(
+    async (chatId: string, msgs: ChatMessage[]) => {
+      try {
+        await updateChatHistory(chatId, msgs);
+      } catch (err) {
+        logger.error("Failed to save chat history:", err);
+      }
+    },
+    1000
+  );
+
   // Computed
   const modelName = computed(() => currentModel.value.split("/").pop() || "");
   const hasValidKey = computed(() => openRouter.hasValidKey.value);
@@ -54,11 +67,6 @@ export function useAIChat() {
   // Methods to manage chat state
   const createNewChat = async () => {
     try {
-      logger.debug("Creating new chat", {
-        currentModel: currentModel.value,
-        hasMessages: messages.value.length,
-      });
-
       checkAuth();
 
       // Clear current chat state
@@ -68,7 +76,6 @@ export function useAIChat() {
       // Ensure we have a model set
       if (!currentModel.value && availableModels.value.length > 0) {
         currentModel.value = availableModels.value[0].id;
-        logger.debug("Set default model", { model: currentModel.value });
       }
 
       // Create new chat history entry
@@ -84,16 +91,9 @@ export function useAIChat() {
         },
       };
 
-      logger.debug("Saving new chat to Supabase", newChat);
-
       // Save to Supabase
       const savedChat = await saveChatHistory(newChat);
       currentChatId.value = savedChat.id;
-
-      logger.debug("Chat saved successfully", {
-        chatId: savedChat.id,
-        model: savedChat.model,
-      });
 
       // Emit chat update event
       chatBus.emit("chat-created", savedChat);
@@ -115,8 +115,6 @@ export function useAIChat() {
 
   const loadChat = async (id: string) => {
     try {
-      logger.debug("Loading chat", { id });
-
       const { data: chat, error: chatError } = await supabase
         .from("vulpeculachats")
         .select("*")
@@ -136,15 +134,9 @@ export function useAIChat() {
         totalMessages: 0,
       };
 
-      logger.debug("Chat loaded", {
-        id,
-        messageCount: messages.value.length,
-        model: currentModel.value,
-      });
-
       return chat;
     } catch (err) {
-      logger.error("Failed to load chat", { id, error: err });
+      logger.error("Failed to load chat:", err);
       error.value = err instanceof Error ? err.message : "Failed to load chat";
       throw err;
     }
@@ -163,13 +155,6 @@ export function useAIChat() {
         currentModel.value
       );
 
-      logger.debug("Sending message", {
-        model: currentModel.value,
-        streaming: supportsStreaming,
-        contentLength: content.length,
-        hasIncludedFiles: !!includedFiles?.length,
-      });
-
       // Create messages array copy for manipulation
       const currentMessages = [...messages.value];
 
@@ -182,7 +167,14 @@ export function useAIChat() {
         model: currentModel.value,
         includedFiles,
       };
-      currentMessages.push(userMessage);
+
+      // Update UI immediately with user message
+      messages.value = [...currentMessages, userMessage];
+
+      // Save user message to Supabase
+      if (currentChatId.value) {
+        debouncedSaveToSupabase(currentChatId.value, messages.value);
+      }
 
       // Add placeholder assistant message
       const assistantMessage: ChatMessage = {
@@ -191,54 +183,45 @@ export function useAIChat() {
         content: "",
         timestamp: new Date().toISOString(),
         model: currentModel.value,
-        isStreaming: supportsStreaming, // Only set streaming for supported models
+        isStreaming: supportsStreaming,
       };
-      currentMessages.push(assistantMessage);
 
-      // Update messages once with both additions
-      messages.value = currentMessages;
+      // Update UI with placeholder
+      messages.value = [...messages.value, assistantMessage];
 
-      let streamedTokenCount = 0;
+      let streamedContent = "";
+      let lastSaveTime = Date.now();
 
       // Get AI response
       const response = await openRouter.sendMessage(content, {
         model: currentModel.value,
         temperature: temperature.value,
         includedFiles,
-        conversationHistory: currentMessages.slice(0, -1),
-        // Only enable streaming for supported models
+        conversationHistory: currentMessages,
         stream: supportsStreaming,
         onToken: supportsStreaming
           ? (token: string) => {
-              streamedTokenCount++;
-              if (streamedTokenCount % 10 === 0) {
-                logger.debug("Streaming progress", {
-                  tokens: streamedTokenCount,
-                  lastToken: token.slice(-10),
-                });
-              }
+              streamedContent += token;
 
-              // Create new array with updated content
-              const updatedMessages = [...messages.value];
-              const messageIndex = updatedMessages.findIndex(
-                (m) => m.id === assistantMessage.id
-              );
-              if (messageIndex !== -1) {
-                updatedMessages[messageIndex] = {
-                  ...updatedMessages[messageIndex],
-                  content: updatedMessages[messageIndex].content + token,
-                };
-                messages.value = updatedMessages;
+              // Update UI less frequently to reduce jank
+              const now = Date.now();
+              if (now - lastSaveTime > 50) {
+                // Only update every 50ms
+                const updatedMessages = [...messages.value];
+                const messageIndex = updatedMessages.findIndex(
+                  (m) => m.id === assistantMessage.id
+                );
+                if (messageIndex !== -1) {
+                  updatedMessages[messageIndex] = {
+                    ...updatedMessages[messageIndex],
+                    content: streamedContent,
+                  };
+                  messages.value = updatedMessages;
+                  lastSaveTime = now;
+                }
               }
             }
           : undefined,
-      });
-
-      logger.debug("Response received", {
-        streaming: supportsStreaming,
-        streamedTokens: streamedTokenCount,
-        finalTokens: response.usage?.completion_tokens,
-        cost: response.cost,
       });
 
       // Update final message state
@@ -276,18 +259,14 @@ export function useAIChat() {
         };
       }
 
-      // Save to Supabase
+      // Save final state to Supabase
       if (currentChatId.value) {
-        await updateChatHistory(currentChatId.value, messages.value);
+        debouncedSaveToSupabase(currentChatId.value, messages.value);
       }
 
       return assistantMessage;
     } catch (err) {
-      logger.error("Failed to send message", {
-        error: err,
-        model: currentModel.value,
-        contentLength: content.length,
-      });
+      logger.error("Failed to send message:", err);
       error.value =
         err instanceof Error ? err.message : "Failed to send message";
       throw err;
@@ -343,21 +322,15 @@ export function useAIChat() {
   // Add chat history sync
   const syncChatHistory = async () => {
     try {
-      logger.debug("Syncing chat history");
       const { data: chats, error: chatError } = await supabase
         .from("vulpeculachats")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (chatError) throw chatError;
-
-      logger.debug("Chat history loaded", {
-        count: chats?.length || 0,
-      });
-
       return chats || [];
     } catch (err) {
-      logger.error("Failed to sync chat history", err);
+      logger.error("Failed to sync chat history:", err);
       throw err;
     }
   };

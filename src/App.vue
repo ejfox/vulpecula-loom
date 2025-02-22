@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch, computed } from 'vue'
+import { onMounted, ref, watch, computed, nextTick } from 'vue'
 import { useLoadingSequence } from './composables/useLoadingSequence'
 import { useActiveUser } from './composables/useActiveUser'
 import { useBreakpoints } from '@vueuse/core'
@@ -340,6 +340,21 @@ const formatModelCost = (modelId: string, cost: number): string => {
   return `$${cost.toFixed(4)}`
 }
 
+// Add scroll to bottom functionality
+const scrollToBottom = () => {
+  if (chatContainerRef.value) {
+    chatContainerRef.value.scrollTop = chatContainerRef.value.scrollHeight
+  }
+}
+
+// Watch messages and scroll to bottom when they change
+watch(messages, () => {
+  // Use nextTick to ensure DOM is updated before scrolling
+  nextTick(() => {
+    scrollToBottom()
+  })
+}, { deep: true })
+
 // Watch for chat updates
 onMounted(async () => {
   try {
@@ -399,8 +414,27 @@ onMounted(async () => {
 
     // Load chat history
     try {
-      // logger.debug("Loading initial chat history")
       await syncChatHistory()
+
+      // Load most recent chat if one exists and no chat is currently loaded
+      if (chatHistory.value.length > 0 && !currentChatId.value) {
+        // Sort by lastUpdated and get most recent chat
+        const mostRecentChat = [...chatHistory.value]
+          .sort((a, b) => {
+            const aDate = a.metadata?.lastUpdated ? new Date(a.metadata.lastUpdated) : new Date(0)
+            const bDate = b.metadata?.lastUpdated ? new Date(b.metadata.lastUpdated) : new Date(0)
+            return bDate.getTime() - aDate.getTime()
+          })[0]
+
+        if (mostRecentChat) {
+          logger.debug("Loading most recent chat", {
+            chatId: mostRecentChat.id,
+            lastUpdated: mostRecentChat.metadata?.lastUpdated
+          })
+          await loadChat(mostRecentChat.id)
+        }
+      }
+
       completeStep('chat-history')
     } catch (error) {
       logger.error('Failed to load chat history:', error)

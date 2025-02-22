@@ -80,7 +80,6 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
-      console.log("Saving chat history:", history);
       const { data, error } = await supabase
         .from("vulpeculachats")
         .insert([
@@ -96,10 +95,9 @@ export function useSupabase() {
         .single();
 
       if (error) throw error;
-      console.log("Chat saved successfully:", data);
       return data;
     } catch (error) {
-      console.error("Error in saveChatHistory:", error);
+      logger.error("Error in saveChatHistory:", error);
       throw error;
     }
   }
@@ -112,7 +110,6 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
-      console.log("Updating chat history:", { id, messages, metadata });
       const { data, error } = await supabase
         .from("vulpeculachats")
         .update({
@@ -126,10 +123,9 @@ export function useSupabase() {
         .single();
 
       if (error) throw error;
-      console.log("Chat updated successfully:", data);
       return data;
     } catch (error) {
-      console.error("Error in updateChatHistory:", error);
+      logger.error("Error in updateChatHistory:", error);
       throw error;
     }
   }
@@ -138,7 +134,6 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
-      console.log("Loading chat history:", id);
       const { data, error } = await supabase
         .from("vulpeculachats")
         .select("*")
@@ -147,10 +142,9 @@ export function useSupabase() {
         .single();
 
       if (error) throw error;
-      console.log("Chat loaded successfully:", data);
       return data;
     } catch (error) {
-      console.error("Error in loadChatHistory:", error);
+      logger.error("Error in loadChatHistory:", error);
       throw error;
     }
   }
@@ -158,27 +152,9 @@ export function useSupabase() {
   async function loadChatHistories(thread?: string) {
     try {
       if (!userId.value) {
-        logger.debug("No user ID available", {
-          userId: userId.value,
-          isAuthenticated: !!userId.value,
-        });
+        logger.debug("No user ID available for loading chat histories");
         throw new Error("User not authenticated");
       }
-
-      console.group("Loading chat histories");
-      console.log("Supabase config:", {
-        url: import.meta.env.VITE_SUPABASE_URL,
-        hasKey: !!import.meta.env.VITE_SUPABASE_KEY,
-        isConfigured: isConfigured.value,
-        hasValidSupabaseConfig: hasValidSupabaseConfig.value,
-      });
-
-      console.log("Auth state:", {
-        userId: userId.value,
-        isAuthenticated: !!userId.value,
-      });
-
-      console.log("Thread parameter:", thread || "No thread specified");
 
       let query = supabase
         .from("vulpeculachats")
@@ -187,43 +163,16 @@ export function useSupabase() {
         .order("updated_at", { ascending: false });
 
       if (thread) {
-        console.log("Filtering by thread:", thread);
         query = query.eq("thread", thread);
       }
 
-      logger.debug("Executing Supabase query", {
-        userId: userId.value,
-        thread: thread || null,
-        sql: query.toSQL?.() || "SQL not available",
-      });
-
       const { data, error } = await query;
 
-      if (error) {
-        console.error("Error loading chats:", error);
-        throw error;
-      }
-
-      console.log(`Loaded ${data?.length || 0} chats:`, {
-        threads: [...new Set(data?.map((chat) => chat.thread))],
-        totalMessages: data?.reduce(
-          (acc, chat) => acc + chat.messages.length,
-          0
-        ),
-        dateRange: data?.length
-          ? {
-              oldest: data[data.length - 1].created_at,
-              newest: data[0].created_at,
-            }
-          : null,
-      });
-
+      if (error) throw error;
       return data;
     } catch (error) {
-      console.error("Error in loadChatHistories:", error);
+      logger.error("Error in loadChatHistories:", error);
       throw error;
-    } finally {
-      console.groupEnd();
     }
   }
 
@@ -231,16 +180,14 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
-      console.log("Deleting all chats");
       const { error } = await supabase
         .from("vulpeculachats")
         .delete()
         .eq("user_id", userId.value);
 
       if (error) throw error;
-      console.log("All chats deleted successfully");
     } catch (error) {
-      console.error("Error in deleteAllChats:", error);
+      logger.error("Error in deleteAllChats:", error);
       throw error;
     }
   }
@@ -265,7 +212,7 @@ export function useSupabase() {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error("Error updating chat metadata:", error);
+      logger.error("Error updating chat metadata:", error);
       return null;
     }
   };
@@ -333,7 +280,7 @@ export function useSupabase() {
 
       return createdChat;
     } catch (err) {
-      console.error("Failed to fork chat:", err);
+      logger.error("Failed to fork chat:", err);
       return null;
     }
   };
@@ -353,7 +300,7 @@ export function useSupabase() {
         summaryLastUpdated: new Date().toISOString(),
       });
     } catch (err) {
-      console.error("Failed to generate chat summary:", err);
+      logger.error("Failed to generate chat summary:", err);
       return null;
     }
   };
@@ -364,6 +311,8 @@ export function useSupabase() {
     chat_ids = [],
   }: ThreadOptions): Promise<Thread | null> => {
     try {
+      if (!userId.value) throw new Error("User not authenticated");
+
       const thread: Thread = {
         id: crypto.randomUUID(),
         name,
@@ -371,6 +320,7 @@ export function useSupabase() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         chat_ids,
+        user_id: userId.value,
       };
 
       // Update all chats to be part of this thread
@@ -385,7 +335,7 @@ export function useSupabase() {
 
       return thread;
     } catch (err) {
-      console.error("Failed to create thread:", err);
+      logger.error("Failed to create thread:", err);
       return null;
     }
   };
@@ -418,7 +368,7 @@ export function useSupabase() {
 
       return true;
     } catch (err) {
-      console.error("Failed to add chat to thread:", err);
+      logger.error("Failed to add chat to thread:", err);
       return false;
     }
   };
@@ -434,7 +384,7 @@ export function useSupabase() {
       if (error) throw error;
       return data || [];
     } catch (err) {
-      console.error("Failed to get thread chats:", err);
+      logger.error("Failed to get thread chats:", err);
       return [];
     }
   };
@@ -454,7 +404,7 @@ export function useSupabase() {
       if (error) throw error;
       return true;
     } catch (err) {
-      console.error("Failed to remove chat from thread:", err);
+      logger.error("Failed to remove chat from thread:", err);
       return false;
     }
   };
@@ -463,7 +413,6 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
-      console.log("Deleting chat:", id);
       const { error } = await supabase
         .from("vulpeculachats")
         .delete()
@@ -471,9 +420,8 @@ export function useSupabase() {
         .eq("user_id", userId.value);
 
       if (error) throw error;
-      console.log("Chat deleted successfully");
     } catch (error) {
-      console.error("Error in deleteChat:", error);
+      logger.error("Error in deleteChat:", error);
       throw error;
     }
   }

@@ -357,6 +357,15 @@ export interface UseSupabaseReturn {
   isConfigured: boolean;
 }
 
+export interface OpenRouterMessageOptions {
+  model?: string;
+  temperature?: number;
+  includedFiles?: IncludedFile[];
+  conversationHistory?: ChatMessage[];
+  onToken?: (token: string) => void;
+  stream?: boolean;
+}
+
 export interface UseOpenRouterReturn {
   apiKey: Ref<string>;
   hasValidKey: ComputedRef<boolean>;
@@ -365,7 +374,10 @@ export interface UseOpenRouterReturn {
   error: Ref<string | null>;
   currentModel: Ref<string>;
   modelName: ComputedRef<string>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (
+    content: string,
+    options: OpenRouterMessageOptions
+  ) => Promise<OpenRouterResponse>;
   setModel: (model: string) => void;
   currentChatId: Ref<string | null>;
   loadChat: (id: string) => Promise<void>;

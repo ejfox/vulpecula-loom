@@ -598,3 +598,40 @@ create policy "Users can delete their own chats"
    - Session established
    - User data loaded
    - Chat history retrieved
+
+### Logging Philosophy
+
+The application follows a minimalist logging approach:
+
+1. **Production Logging**
+   - Critical errors only
+   - Authentication state changes
+   - Important system events
+   - No debug logs in production
+
+2. **Development Logging**
+   - Controlled through `logger.ts`
+   - Debug logs only shown in development
+   - Singleton pattern for consistent logging
+   - No redundant initialization logs
+
+3. **Log Categories**
+   ```typescript
+   export type LogLevel = "debug" | "info" | "warn" | "error";
+   ```
+   - `debug`: Development-only diagnostic information
+   - `info`: Important but non-critical system events
+   - `warn`: Potential issues that don't stop execution
+   - `error`: Critical issues that need attention
+
+4. **Implementation**
+   - Centralized logger in `src/lib/logger.ts`
+   - Singleton patterns in key composables
+   - No console.log in production code
+   - Error tracking preserved for debugging
+
+5. **Best Practices**
+   - Use `logger.error` for exceptions
+   - Keep debug logs minimal
+   - No sensitive data in logs
+   - Clear, actionable error messages

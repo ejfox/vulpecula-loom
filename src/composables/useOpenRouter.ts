@@ -75,13 +75,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
   });
 
   const hasValidKey = computed(() => {
-    logger.debug("Checking API key validity", {
-      hasKey: !!apiKey.value,
-      validFormat:
-        apiKey.value.startsWith("sk-or-") && apiKey.value.length > 10,
-      modelsLoaded: availableModels.value.length > 0,
-    });
-
     return apiKey.value.startsWith("sk-or-") && apiKey.value.length > 10;
   });
   const availableModels = ref<OpenRouterModel[]>([]);
@@ -135,7 +128,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
   // Fetch available models from OpenRouter API
   async function fetchAvailableModels({ includeAll = false } = {}) {
     try {
-      // logger.debug("Fetching models from OpenRouter API");
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -145,10 +137,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
       });
 
       if (!response.ok) {
-        logger.error("Failed to fetch models", {
-          status: response.status,
-          statusText: response.statusText,
-        });
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -157,16 +145,11 @@ export function useOpenRouter(): UseOpenRouterReturn {
       // Map all available models
       const processedModels = data.data
         .filter((model: any) => {
-          // Filter out any invalid models - ensure required fields exist
           const isValid =
             model.id &&
             model.context_length &&
             model.pricing?.prompt &&
             model.pricing?.completion;
-
-          if (!isValid) {
-            logger.warn("Invalid model filtered out", { id: model.id });
-          }
           return isValid;
         })
         .map((model: any) => ({
@@ -180,15 +163,10 @@ export function useOpenRouter(): UseOpenRouterReturn {
           },
         }));
 
-      // logger.debug("Models processed", {
-      //   total: processedModels.length,
-      // });
-
       availableModels.value = processedModels;
 
-      // If we don't have any enabled models yet, enable some defaults
+      // Set default enabled models if none exist
       if (enabledModelIds.value.length === 0) {
-        // logger.debug("Setting default enabled models");
         enabledModelIds.value = [
           "anthropic/claude-3-sonnet:beta",
           "anthropic/claude-2.1",
@@ -197,13 +175,8 @@ export function useOpenRouter(): UseOpenRouterReturn {
         ];
         await store.set("enabledModelIds", enabledModelIds.value);
       }
-
-      logger.debug("Models initialization complete", {
-        total: availableModels.value.length,
-        enabled: enabledModelIds.value.length,
-      });
     } catch (error) {
-      logger.error("Failed to fetch models", error);
+      logger.error("Failed to fetch models:", error);
       availableModels.value = [];
     }
   }
@@ -216,7 +189,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
       // Load API key
       const storedKey = await store.get("api-key");
-
       if (storedKey) {
         apiKey.value = storedKey;
         await validateApiKey(storedKey);
@@ -243,7 +215,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
         await fetchAvailableModels();
       }
     } catch (err) {
-      logger.error("Failed to initialize OpenRouter", err);
+      logger.error("Failed to initialize OpenRouter:", err);
     } finally {
       isLoading.value = false;
     }
@@ -259,8 +231,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
   // Track model usage
   function trackModelUsage(modelId: string) {
-    logger.debug("Tracking model usage", { modelId });
-
     const updatedIds = [
       modelId,
       ...Array.from(recentModelIds.value.filter((id) => id !== modelId)),

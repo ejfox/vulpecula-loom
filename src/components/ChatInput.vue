@@ -81,14 +81,22 @@ onMounted(() => {
 
 const handleSubmit = () => {
   if (!newMessage.value.trim() || props.isLoading) return
-  emit('send', newMessage.value)
+
+  // Store message before clearing
+  const messageToSend = newMessage.value
+
+  // Clear input immediately for instant feedback
   newMessage.value = ''
   messageIncludedFiles.value = []
   mentions.value = []
+
   // Maintain focus after sending
   nextTick(() => {
     textareaRef.value?.focus()
   })
+
+  // Emit after UI is updated
+  emit('send', messageToSend)
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
