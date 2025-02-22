@@ -14,8 +14,9 @@ export interface StoreSchema {
   "obsidian-vault-path": string;
   enabledModelIds: string[];
   recentModelIds: string[];
-  "preferred-vision-model": string | null;
-  uiState: {
+  "openrouter-key"?: string;
+  "preferred-vision-model"?: string | null;
+  uiState?: {
     chatSidebarOpen: boolean;
   };
 }

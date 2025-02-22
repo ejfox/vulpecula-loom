@@ -32,6 +32,8 @@ const previewRef = ref<HTMLDivElement | null>(null)
 const isDraggingOver = ref(false)
 const droppedImages = ref<File[]>([])
 
+const urlAPI = computed(() => globalThis.URL as any)
+
 // Format the message with styled mentions
 const formattedMessage = computed(() => {
   let result = newMessage.value
@@ -343,7 +345,7 @@ const removeFile = (fileToRemove: IncludedFile) => {
             <div class="flex flex-wrap gap-2">
               <div v-for="(image, index) in droppedImages" :key="index"
                 class="relative group w-16 h-16 rounded-md overflow-hidden border border-blue-200 dark:border-blue-800">
-                <img :src="URL.createObjectURL(image)" class="w-full h-full object-cover" />
+                <img :src="urlAPI.value.createObjectURL(image)" class="w-full h-full object-cover" />
                 <button @click="removeImage(index)"
                   class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
                   <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

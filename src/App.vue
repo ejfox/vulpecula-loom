@@ -146,29 +146,29 @@ const store = useStore()
 
 // Setup IPC listeners for menu actions
 onMounted(() => {
-  if (window.electronAPI) {
+  if (window.electron) {
     const cleanupFns = [
-      window.electronAPI.handleMenuAction('menu:open-settings', () => {
+      window.electron.onOpenSettings(() => {
         console.log('Opening settings from menu')
         isSettingsModalOpen.value = true
       }),
 
-      window.electronAPI.handleMenuAction('menu:new-chat', () => {
+      window.electron.onNewChat(() => {
         console.log('Creating new chat from menu')
         createNewChat()
       }),
 
-      window.electronAPI.handleMenuAction('menu:export-chat', () => {
+      window.electron.onExportChat(() => {
         console.log('Exporting chat from menu')
         exportChat()
       }),
 
-      window.electronAPI.handleMenuAction('menu:toggle-chat-sidebar', () => {
+      window.electron.onToggleChatSidebar(() => {
         console.log('Toggling chat sidebar from menu')
         isChatSidebarOpen.value = !isChatSidebarOpen.value
       }),
 
-      window.electronAPI.handleMenuAction('menu:toggle-context-panel', () => {
+      window.electron.onToggleContextPanel(() => {
         console.log('Toggling context panel from menu')
         isContextPanelOpen.value = !isContextPanelOpen.value
       })

@@ -21,25 +21,11 @@ const currentChatId = ref<string | null>(null);
 const temperature = ref(0.7);
 
 // Compute stats directly from messages
-const chatStats = computed<ChatStats>(() => {
-  return messages.value.reduce(
-    (stats, msg) => {
-      if (msg.tokens) {
-        stats.promptTokens += msg.tokens.prompt || 0;
-        stats.completionTokens += msg.tokens.completion || 0;
-      }
-      if (msg.cost) {
-        stats.cost += msg.cost;
-      }
-      return stats;
-    },
-    {
-      promptTokens: 0,
-      completionTokens: 0,
-      cost: 0,
-      totalMessages: messages.value.length,
-    }
-  );
+const chatStats = ref<any>({
+  promptTokens: 0,
+  completionTokens: 0,
+  cost: 0,
+  totalMessages: 0,
 });
 
 // Models known not to support streaming
@@ -266,7 +252,7 @@ export function useAIChat() {
               }
             }
           : undefined,
-      });
+      } as any);
 
       // Update final message state
       const finalMessages = [...messages.value];

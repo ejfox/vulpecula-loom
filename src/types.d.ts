@@ -11,6 +11,12 @@ export interface OpenRouterModel {
     prompt: string;
     completion: string;
   };
+  capabilities?: {
+    vision?: boolean;
+    tools?: boolean;
+    function_calling?: boolean;
+  };
+  provider?: string;
 }
 
 export interface OpenRouterConfig {
@@ -85,15 +91,21 @@ export interface ChatMetadata {
   lastUpdated?: string;
   messageCount?: number;
   stats?: ChatStats;
+  summary?: string;
+  summaryLastUpdated?: string;
+  autoTitle?: string;
   tokens?: {
     total: number;
   };
   fork?: {
     parentId: string;
     forkDepth: number;
+    forkMessageId?: string;
+    childIds?: string[];
   };
   thread?: {
     name: string;
+    description?: string;
   };
 }
 
@@ -126,6 +138,7 @@ export interface ChatForkOptions {
 
 export interface Thread {
   id: string;
+  user_id: string;
   name: string;
   description?: string;
   created_at: string;
@@ -184,6 +197,11 @@ export interface StoreSchema {
   "obsidian-vault-path": string;
   enabledModelIds: string[];
   recentModelIds: string[];
+  "openrouter-key"?: string;
+  "preferred-vision-model"?: string;
+  uiState?: {
+    chatSidebarOpen: boolean;
+  };
 }
 
 // Electron IPC Types
@@ -240,6 +258,11 @@ export interface ElectronAPI {
       listener: (event: any, ...args: any[]) => void
     ) => void;
   };
+  onOpenSettings: (callback: () => void) => () => void;
+  onNewChat: (callback: () => void) => () => void;
+  onExportChat: (callback: () => void) => () => void;
+  onToggleChatSidebar: (callback: () => void) => () => void;
+  onToggleContextPanel: (callback: () => void) => () => void;
 }
 
 declare global {
@@ -364,6 +387,7 @@ export interface OpenRouterMessageOptions {
   conversationHistory?: ChatMessage[];
   onToken?: (token: string) => void;
   stream?: boolean;
+  [key: string]: any;
 }
 
 export interface UseOpenRouterReturn {

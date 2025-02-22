@@ -44,6 +44,7 @@ declare global {
   interface Window {
     electron?: {
       ipc: IpcRenderer;
+      ipcRenderer: IpcRenderer;
       store: Store;
       shell: {
         openExternal: (url: string) => Promise<void>;
@@ -59,13 +60,7 @@ declare global {
       onToggleChatSidebar(callback: () => void): () => void;
       onToggleContextPanel(callback: () => void): () => void;
     };
-    electronAPI: {
-      store: Store;
-      handleMenuAction(
-        channel: string,
-        callback: (...args: any[]) => void
-      ): () => void;
-    };
+    electronAPI: ElectronAPI;
   }
 }
 

@@ -349,7 +349,8 @@ const groupedModels = computed(() => {
 })
 
 // Add helper function for chat age
-const formatChatAge = (date: string) => {
+const formatChatAge = (date: string | undefined) => {
+  if (!date) return ''
   return formatDistanceToNow(new Date(date), { addSuffix: true })
 }
 

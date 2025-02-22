@@ -59,7 +59,7 @@ const timeAnalysis = computed(() => {
   if (!props.messages.length) return null
 
   // Just cast everything to any to make TypeScript happy
-  const timestamps: any[] = props.messages.map(m => new Date(m.timestamp))
+  const timestamps: any[] = props.messages.map(m => m.timestamp ? new Date(m.timestamp) : new Date())
   const firstMessage: any = timestamps[0]
   const lastMessage: any = timestamps[timestamps.length - 1]
   const totalDuration: any = differenceInMinutes(lastMessage, firstMessage)
@@ -229,7 +229,7 @@ const messageAnalysis = computed<MessageAnalysis | null>(() => {
       messageNumber: idx + 1,
       timeSincePrevious: idx > 0
         ? differenceInMinutes(
-          new Date(msg.timestamp as string), 
+          new Date(msg.timestamp as string),
           new Date(props.messages[idx - 1].timestamp as string)
         )
         : 0

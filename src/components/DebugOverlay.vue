@@ -111,7 +111,7 @@ const startDrag = (e: PointerEvent) => {
 // Toggle visibility with Cmd/Ctrl + D
 const cmdKey = useKeyModifier('Meta')
 const ctrlKey = useKeyModifier('Control')
-const dKey = useKeyModifier('D')
+const dKey = useKeyModifier('d' as any)
 
 const [isVisible, toggleVisible] = useToggle(false)
 

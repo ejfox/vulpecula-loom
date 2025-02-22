@@ -191,13 +191,16 @@ export function useOpenRouter(): UseOpenRouterReturn {
         // Initialize with null if not set
         const visionModelKey = "preferred-vision-model" as keyof StoreSchema;
         if (!(await store.get(visionModelKey))) {
-          await store.set(visionModelKey, null);
+          await store.set(visionModelKey, null as any);
         }
         storedVisionModel = await store.get(visionModelKey);
       } catch (error) {
         logger.error("Failed to get preferred vision model:", error);
         // Ensure we have a valid initial state
-        await store.set("preferred-vision-model" as keyof StoreSchema, null);
+        await store.set(
+          "preferred-vision-model" as keyof StoreSchema,
+          null as any
+        );
       }
 
       // Only set a default if we don't have a valid model ID stored
@@ -210,7 +213,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
           try {
             await store.set(
               "preferred-vision-model" as keyof StoreSchema,
-              defaultVisionModel.id
+              defaultVisionModel.id as any
             );
           } catch (error) {
             logger.error("Failed to set default vision model:", error);
