@@ -11,6 +11,7 @@ export interface ChatMessage {
   };
   cost?: number;
   includedFiles?: IncludedFile[];
+  isStreaming?: boolean;
 }
 
 export interface ChatMetadata {
@@ -43,7 +44,7 @@ export interface ChatStats {
 export interface IncludedFile {
   path: string;
   content: string;
-  type: string;
+  type?: string;
 }
 
 export interface Chat {
@@ -104,4 +105,23 @@ export interface OpenRouterModel {
     completion: string;
   };
   provider?: string;
+}
+
+export interface ElectronAPI {
+  shell: {
+    openExternal: (url: string) => Promise<void>;
+  };
+  ipc?: {
+    invoke: (channel: string, ...args: any[]) => Promise<any>;
+  };
+  store?: {
+    get: (key: string) => Promise<any>;
+    set: (key: string, value: any) => Promise<void>;
+  };
+}
+
+declare global {
+  interface Window {
+    electron?: ElectronAPI;
+  }
 }

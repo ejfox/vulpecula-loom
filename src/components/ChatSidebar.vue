@@ -64,9 +64,8 @@
                     <span class="flex-1 truncate font-medium">
                       {{ chat.title || 'Untitled Chat' }}
                     </span>
-                    <span v-if="chat.metadata.tokens?.total"
-                      class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                      {{ formatNumber(chat.metadata.tokens.total) }}t
+                    <span v-if="chat.metadata?.stats" class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                      {{ formatNumber(getTokenStats(chat).tokens) }}t
                     </span>
                   </div>
                   <div class="text-xs truncate flex items-center gap-2">
@@ -75,6 +74,35 @@
                     </span>
                     <span v-if="chat.metadata.fork?.parentId" class="text-blue-400/80">
                       (Forked)
+                    </span>
+                  </div>
+                  <div class="mt-1 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                    <!-- Age -->
+                    <span class="flex items-center gap-1">
+                      <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {{ formatChatAge(chat.metadata?.lastUpdated || chat.created_at) }}
+                    </span>
+                    <!-- Message Count -->
+                    <span class="flex items-center gap-1">
+                      <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      {{ getMessageCounts(chat).human + getMessageCounts(chat).ai }}
+                      <span class="opacity-50">({{ getMessageCounts(chat).human }}h/{{ getMessageCounts(chat).ai
+                        }}a)</span>
+                    </span>
+                    <!-- Token Stats -->
+                    <span class="flex items-center gap-1">
+                      <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {{ formatNumber(getTokenStats(chat).tokens) }}t
+                      <span class="opacity-50">${{ getTokenStats(chat).cost.toFixed(4) }}</span>
                     </span>
                   </div>
                 </div>
@@ -127,10 +155,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { ChatSidebarProps, Chat, OpenRouterModel } from '../types'
+import type { Chat, OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import logger from '../lib/logger'
 import ChatImport from './ChatImport.vue'
+import { formatDistanceToNow } from 'date-fns'
 
 const props = defineProps<{
   chatHistory: Chat[]
@@ -311,6 +340,30 @@ const groupedModels = computed(() => {
     return groups
   }, {})
 })
+
+// Add helper function for chat age
+const formatChatAge = (date: string) => {
+  return formatDistanceToNow(new Date(date), { addSuffix: true })
+}
+
+// Add helper function for message counts
+const getMessageCounts = (chat: Chat) => {
+  const messages = chat.messages || []
+  return {
+    human: messages.filter(m => m.role === 'user').length,
+    ai: messages.filter(m => m.role === 'assistant').length,
+    total: messages.length
+  }
+}
+
+// Add helper function for token stats
+const getTokenStats = (chat: Chat) => {
+  const stats = chat.metadata?.stats || { promptTokens: 0, completionTokens: 0, cost: 0 }
+  return {
+    tokens: (stats.promptTokens || 0) + (stats.completionTokens || 0),
+    cost: stats.cost || 0
+  }
+}
 </script>
 
 <style scoped>

@@ -49,17 +49,23 @@ export interface UseOpenRouterReturn {
   validateApiKey: (key: string) => Promise<boolean>;
 }
 
+// Singleton instance
+let instance: UseOpenRouterReturn | null = null;
+
 export function useOpenRouter(): UseOpenRouterReturn {
+  // Return existing instance if already initialized
+  if (instance) return instance;
+
   const store = useStore();
   const apiKey = ref("");
   const messages = ref<any[]>([]);
   const isLoading = ref(false);
   const error = ref<string | null>(null);
+  const isInitialized = ref(false);
   const currentModel = ref("anthropic/claude-3-sonnet:beta");
   const currentChatId = ref<string | null>(null);
   const chatStats = ref<any>({});
   const temperature = ref(0.7);
-  const isInitialized = ref(false);
 
   const modelName = computed(() => {
     const model = availableModels.value.find(
@@ -129,7 +135,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
   // Fetch available models from OpenRouter API
   async function fetchAvailableModels({ includeAll = false } = {}) {
     try {
-      logger.debug("Fetching models from OpenRouter API");
+      // logger.debug("Fetching models from OpenRouter API");
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -174,15 +180,15 @@ export function useOpenRouter(): UseOpenRouterReturn {
           },
         }));
 
-      logger.debug("Models processed", {
-        total: processedModels.length,
-      });
+      // logger.debug("Models processed", {
+      //   total: processedModels.length,
+      // });
 
       availableModels.value = processedModels;
 
       // If we don't have any enabled models yet, enable some defaults
       if (enabledModelIds.value.length === 0) {
-        logger.debug("Setting default enabled models");
+        // logger.debug("Setting default enabled models");
         enabledModelIds.value = [
           "anthropic/claude-3-sonnet:beta",
           "anthropic/claude-2.1",
@@ -204,19 +210,16 @@ export function useOpenRouter(): UseOpenRouterReturn {
 
   // Initialize API key and enabled models
   const initialize = async () => {
-    logger.debug("Initializing OpenRouter");
     try {
       isLoading.value = true;
       error.value = null;
 
       // Load API key
       const storedKey = await store.get("api-key");
-      logger.debug("API key loaded", { hasKey: !!storedKey });
 
       if (storedKey) {
         apiKey.value = storedKey;
-        const isValid = await validateApiKey(storedKey);
-        logger.debug("API key validated", { isValid });
+        await validateApiKey(storedKey);
       }
 
       // Load enabled models
@@ -235,12 +238,10 @@ export function useOpenRouter(): UseOpenRouterReturn {
         recentModelIds.value = storedRecentIds;
       }
 
-      // Fetch models if we have a key
-      if (apiKey.value) {
+      // Only fetch models once during initialization if we have a valid key
+      if (apiKey.value && apiKey.value.startsWith("sk-or-")) {
         await fetchAvailableModels();
       }
-
-      logger.debug("OpenRouter initialization complete");
     } catch (err) {
       logger.error("Failed to initialize OpenRouter", err);
     } finally {
@@ -249,7 +250,12 @@ export function useOpenRouter(): UseOpenRouterReturn {
   };
 
   // Call initialize on mount
-  onMounted(initialize);
+  onMounted(() => {
+    if (!isInitialized.value) {
+      initialize();
+      isInitialized.value = true;
+    }
+  });
 
   // Track model usage
   function trackModelUsage(modelId: string) {
@@ -276,44 +282,12 @@ export function useOpenRouter(): UseOpenRouterReturn {
       .filter((m): m is OpenRouterModel => m !== undefined);
   });
 
-  // Watch for API key changes to fetch models
-  watch(apiKey, async (newKey) => {
-    if (newKey) {
-      await fetchAvailableModels();
-    } else {
-      availableModels.value = [];
-    }
-  });
-
-  // Watch for enabled models changes
-  watch(
-    enabledModelIds,
-    async (newIds) => {
-      try {
-        await store.set("enabled-model-ids", [...newIds]);
-        await store.set("enabledModelIds", [...newIds]);
-      } catch (error) {
-        console.error("Error saving enabled models:", error);
-      }
-    },
-    { deep: true }
-  );
-
-  // Load API key from store
-  const loadApiKey = async () => {
-    const storedKey = await store.get("api-key");
-    if (storedKey) {
-      apiKey.value = storedKey;
-      await validateApiKey(storedKey);
-    }
-  };
-
-  // Save API key to store
+  // Remove the redundant watch on apiKey that was re-fetching models
+  // Only fetch models when explicitly saving a new API key
   const saveApiKey = async (key: string): Promise<boolean> => {
     try {
       const isValid = await validateApiKey(key);
       if (!isValid) {
-        logger.warn("API key validation failed");
         error.value = "Invalid API key";
         return false;
       }
@@ -482,7 +456,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
             for (const line of lines) {
               if (!line.trim() || !line.startsWith("data: ")) continue;
 
-              const data = line.slice(5);
+              const data = line.slice(5).trim();
               if (data === "[DONE]") continue;
 
               try {
@@ -497,7 +471,9 @@ export function useOpenRouter(): UseOpenRouterReturn {
                 logger.debug("Failed to parse streaming response line:", {
                   line,
                   error: e,
+                  data,
                 });
+                // Don't throw on parse errors, just skip invalid lines
                 continue;
               }
             }
@@ -590,7 +566,8 @@ export function useOpenRouter(): UseOpenRouterReturn {
     // Implementation
   }
 
-  return {
+  // Create singleton instance
+  instance = {
     apiKey,
     setApiKey: saveApiKey,
     hasValidKey,
@@ -618,4 +595,6 @@ export function useOpenRouter(): UseOpenRouterReturn {
     sendMessage,
     validateApiKey,
   };
+
+  return instance;
 }

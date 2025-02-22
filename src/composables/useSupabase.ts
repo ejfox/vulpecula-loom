@@ -14,6 +14,7 @@ import type {
 } from "../types";
 import { useStore } from "../lib/store";
 import { useActiveUser } from "./useActiveUser";
+import { logger } from "../lib/logger";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -156,7 +157,13 @@ export function useSupabase() {
 
   async function loadChatHistories(thread?: string) {
     try {
-      if (!userId.value) throw new Error("User not authenticated");
+      if (!userId.value) {
+        logger.debug("No user ID available", {
+          userId: userId.value,
+          isAuthenticated: !!userId.value,
+        });
+        throw new Error("User not authenticated");
+      }
 
       console.group("Loading chat histories");
       console.log("Supabase config:", {
@@ -164,6 +171,11 @@ export function useSupabase() {
         hasKey: !!import.meta.env.VITE_SUPABASE_KEY,
         isConfigured: isConfigured.value,
         hasValidSupabaseConfig: hasValidSupabaseConfig.value,
+      });
+
+      console.log("Auth state:", {
+        userId: userId.value,
+        isAuthenticated: !!userId.value,
       });
 
       console.log("Thread parameter:", thread || "No thread specified");
@@ -178,6 +190,12 @@ export function useSupabase() {
         console.log("Filtering by thread:", thread);
         query = query.eq("thread", thread);
       }
+
+      logger.debug("Executing Supabase query", {
+        userId: userId.value,
+        thread: thread || null,
+        sql: query.toSQL?.() || "SQL not available",
+      });
 
       const { data, error } = await query;
 

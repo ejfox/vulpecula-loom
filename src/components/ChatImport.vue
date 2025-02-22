@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { ChatMessage, Chat, ChatHistory } from '../types'
-import { useChat } from '../composables/useChat'
+import type { ChatMessage, Chat } from '../types'
+import { useAIChat } from '../composables/useAIChat'
 import { useSupabase } from '../composables/useSupabase'
 
-const { importMessages } = useChat()
+const aiChat = useAIChat()
 const { saveChatHistory } = useSupabase()
 
 const emit = defineEmits(['new-chat'])
@@ -16,16 +16,29 @@ const handleFileUpload = async (event: Event) => {
   const messages = parseMarkdownToMessages(content)
 
   if (messages.length > 0) {
-    const newChat = importMessages(messages as any)
+    // Create new chat with imported messages
+    await aiChat.createNewChat()
+
+    // Update the messages and metadata
     const chatToSave = {
-      title: newChat.title || 'Imported Chat',
-      messages: newChat.messages,
-      model: newChat.model,
-      metadata: newChat.metadata,
-      thread: undefined as string | undefined
+      title: 'Imported Chat',
+      messages: messages,
+      model: aiChat.currentModel.value,
+      metadata: {
+        lastUpdated: new Date().toISOString(),
+        messageCount: messages.length,
+        lastModel: aiChat.currentModel.value,
+        stats: {
+          promptTokens: 0,
+          completionTokens: 0,
+          cost: 0,
+          totalMessages: messages.length
+        }
+      }
     }
-    await saveChatHistory(chatToSave)
-    emit('new-chat', newChat)
+
+    const savedChat = await saveChatHistory(chatToSave)
+    emit('new-chat', savedChat)
   }
 }
 

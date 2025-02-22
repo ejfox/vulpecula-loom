@@ -82,25 +82,30 @@ export interface ChatForkMetadata {
 
 export interface ChatMetadata {
   lastModel?: string;
-  lastUpdated: string;
-  summary?: string;
-  autoTitle?: string;
-  messageCount: number;
-  summaryLastUpdated?: string;
-  fork?: any;
-  thread?: any;
+  lastUpdated?: string;
+  messageCount?: number;
+  stats?: ChatStats;
+  tokens?: {
+    total: number;
+  };
+  fork?: {
+    parentId: string;
+    forkDepth: number;
+  };
+  thread?: {
+    name: string;
+  };
 }
 
 export interface Chat {
   id: string;
-  title: string | null;
-  messages: any[];
+  title: string;
+  messages: ChatMessage[];
   model: string;
-  metadata: any;
-  created_at: string;
-  updated_at: string;
-  user_id?: string;
-  thread?: any;
+  metadata: ChatMetadata;
+  created_at?: string;
+  updated_at?: string;
+  thread?: string;
 }
 
 export interface NewChat {
@@ -165,7 +170,7 @@ export interface UIPreferences {
 // Store Types
 export interface StoreSchema {
   "api-key": string;
-  theme: "light" | "dark" | "system";
+  theme: "light" | "dark";
   "show-progress-bar": boolean;
   "show-only-pinned-models": boolean;
   "pinned-models": string[];
@@ -314,11 +319,11 @@ export interface ApiKeyWarningProps {
 }
 
 export interface ChatSidebarProps {
-  chatHistory: any[];
+  chatHistory: Chat[];
   currentChatId: string | null;
   currentModel: string;
-  availableModels: any[];
-  showOnlyPinnedModels: boolean;
+  availableModels: OpenRouterModel[];
+  showOnlyPinnedModels?: boolean;
 }
 
 export interface ModelSettingsProps {

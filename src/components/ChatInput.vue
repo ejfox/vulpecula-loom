@@ -104,6 +104,7 @@ const handleKeydown = (e: KeyboardEvent) => {
         insertObsidianLink(props.obsidianSearchResults[0])
       }
     } else if (!e.shiftKey) {
+      // Handle normal message sending on Enter
       e.preventDefault()
       handleSubmit()
     }

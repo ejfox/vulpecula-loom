@@ -1,17 +1,19 @@
-import { ref, computed } from "vue";
+import { ref, computed, shallowRef } from "vue";
 import { useOpenRouter } from "./useOpenRouter";
 import { useSupabase } from "./useSupabase";
 import { useActiveUser } from "./useActiveUser";
-import type {
-  ChatMessage,
-  TokenUsage,
-  ChatStats,
-  MessageWithFiles,
-} from "../types";
+import { useStore } from "../lib/store";
+import logger from "../lib/logger";
+import type { ChatMessage, ChatStats, IncludedFile, Chat } from "../types";
+import { useEventBus } from "@vueuse/core";
+
+// Create event bus for chat updates
+const chatBus = useEventBus("chat-updates");
 
 // State
-const messages = ref<ChatMessage[]>([]);
+const messages = shallowRef<ChatMessage[]>([]);
 const isLoading = ref(false);
+const isSending = ref(false);
 const error = ref<string | null>(null);
 const currentModel = ref<string>("anthropic/claude-3-sonnet");
 const currentChatId = ref<string | null>(null);
@@ -23,22 +25,20 @@ const chatStats = ref<ChatStats>({
   totalMessages: 0,
 });
 
+// Models known not to support streaming
+const NON_STREAMING_MODELS = ["meta/llama-2-70b-chat", "meta/llama-2-13b-chat"];
+
 // Exports
 export function useAIChat() {
   // Initialize composables
   const openRouter = useOpenRouter();
-  const { supabase, updateChatHistory } = useSupabase();
+  const { supabase, saveChatHistory, updateChatHistory } = useSupabase();
   const { isAuthenticated } = useActiveUser();
+  const store = useStore();
 
   // Computed
   const modelName = computed(() => currentModel.value.split("/").pop() || "");
-  const hasValidKey = computed(() => {
-    console.log("useAIChat: Checking hasValidKey:", {
-      openRouterHasKey: openRouter.hasValidKey.value,
-      apiKey: openRouter.apiKey.value,
-    });
-    return openRouter.hasValidKey.value;
-  });
+  const hasValidKey = computed(() => openRouter.hasValidKey.value);
   const availableModels = computed(() => openRouter.availableModels.value);
   const enabledModels = computed(() => openRouter.enabledModels.value);
 
@@ -51,146 +51,220 @@ export function useAIChat() {
     }
   };
 
+  // Methods to manage chat state
+  const createNewChat = async () => {
+    try {
+      logger.debug("Creating new chat", {
+        currentModel: currentModel.value,
+        hasMessages: messages.value.length,
+      });
+
+      checkAuth();
+
+      // Clear current chat state
+      messages.value = [];
+      currentChatId.value = null;
+
+      // Ensure we have a model set
+      if (!currentModel.value && availableModels.value.length > 0) {
+        currentModel.value = availableModels.value[0].id;
+        logger.debug("Set default model", { model: currentModel.value });
+      }
+
+      // Create new chat history entry
+      const newChat = {
+        title: "New Chat",
+        messages: [],
+        model: currentModel.value,
+        metadata: {
+          lastModel: currentModel.value,
+          lastUpdated: new Date().toISOString(),
+          messageCount: 0,
+          stats: chatStats.value,
+        },
+      };
+
+      logger.debug("Saving new chat to Supabase", newChat);
+
+      // Save to Supabase
+      const savedChat = await saveChatHistory(newChat);
+      currentChatId.value = savedChat.id;
+
+      logger.debug("Chat saved successfully", {
+        chatId: savedChat.id,
+        model: savedChat.model,
+      });
+
+      // Emit chat update event
+      chatBus.emit("chat-created", savedChat);
+
+      // Update UI state
+      const isMobile = window.innerWidth < 640;
+      if (isMobile) {
+        await store.set("uiState", { chatSidebarOpen: false });
+      }
+
+      return savedChat;
+    } catch (err) {
+      logger.error("Failed to create new chat:", err);
+      error.value =
+        err instanceof Error ? err.message : "Failed to create new chat";
+      throw err;
+    }
+  };
+
+  const loadChat = async (id: string) => {
+    try {
+      logger.debug("Loading chat", { id });
+
+      const { data: chat, error: chatError } = await supabase
+        .from("vulpeculachats")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (chatError) throw chatError;
+
+      // Update local state
+      messages.value = chat.messages;
+      currentChatId.value = chat.id;
+      currentModel.value = chat.metadata?.lastModel || currentModel.value;
+      chatStats.value = chat.metadata?.stats || {
+        promptTokens: 0,
+        completionTokens: 0,
+        cost: 0,
+        totalMessages: 0,
+      };
+
+      logger.debug("Chat loaded", {
+        id,
+        messageCount: messages.value.length,
+        model: currentModel.value,
+      });
+
+      return chat;
+    } catch (err) {
+      logger.error("Failed to load chat", { id, error: err });
+      error.value = err instanceof Error ? err.message : "Failed to load chat";
+      throw err;
+    }
+  };
+
   // Send a message and get a response
-  const sendMessage = async (message: string | MessageWithFiles) => {
-    checkAuth(); // Check auth before proceeding
-
-    const content = typeof message === "string" ? message : message.content;
-    const includedFiles =
-      typeof message === "string" ? undefined : message.includedFiles;
-
-    console.log("🔄 useAIChat: Sending message:", {
-      content,
-      includedFiles: includedFiles?.map((f) => ({
-        title: f.title,
-        path: f.path,
-        contentPreview: f.content?.slice(0, 100) + "...", // Just show first 100 chars
-      })),
-      model: currentModel.value,
-      temperature: temperature.value,
-      hasValidKey: hasValidKey.value,
-    });
+  const sendMessage = async (
+    content: string,
+    includedFiles?: IncludedFile[]
+  ) => {
+    checkAuth();
 
     try {
-      isLoading.value = true;
+      isSending.value = true;
+      const supportsStreaming = !NON_STREAMING_MODELS.includes(
+        currentModel.value
+      );
 
-      // Create user message with guaranteed tokens and cost
-      const estimatedTokens = Math.ceil(content.length / 4);
-      const estimatedCost =
-        (estimatedTokens * openRouter.getModelCost(currentModel.value)) /
-        1000000;
+      logger.debug("Sending message", {
+        model: currentModel.value,
+        streaming: supportsStreaming,
+        contentLength: content.length,
+        hasIncludedFiles: !!includedFiles?.length,
+      });
 
+      // Create messages array copy for manipulation
+      const currentMessages = [...messages.value];
+
+      // Add user message
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
         content,
         timestamp: new Date().toISOString(),
         model: currentModel.value,
-        tokens: {
-          prompt: estimatedTokens,
-          completion: 0,
-          total: estimatedTokens,
-        },
-        cost: estimatedCost,
         includedFiles,
       };
+      currentMessages.push(userMessage);
 
-      console.log("📝 useAIChat: Adding user message:", {
-        ...userMessage,
-        includedFiles: userMessage.includedFiles?.map((f) => ({
-          title: f.title,
-          path: f.path,
-          contentPreview: f.content?.slice(0, 100) + "...",
-        })),
-      });
-      messages.value.push(userMessage);
-
-      // Create placeholder assistant message for streaming
+      // Add placeholder assistant message
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: "",
         timestamp: new Date().toISOString(),
         model: currentModel.value,
-        tokens: {
-          prompt: 0,
-          completion: 0,
-          total: 0,
-        },
-        isStreaming: true,
+        isStreaming: supportsStreaming, // Only set streaming for supported models
       };
-      messages.value.push(assistantMessage);
+      currentMessages.push(assistantMessage);
 
-      // Get AI response using OpenRouter
-      console.log("🤖 useAIChat: Requesting AI response...");
+      // Update messages once with both additions
+      messages.value = currentMessages;
+
+      let streamedTokenCount = 0;
+
+      // Get AI response
       const response = await openRouter.sendMessage(content, {
         model: currentModel.value,
         temperature: temperature.value,
         includedFiles,
-        conversationHistory: messages.value.slice(0, -1), // Exclude the placeholder message
-        onToken: (token) => {
-          // Update the streaming message content
-          const messageIndex = messages.value.findIndex(
-            (m) => m.id === assistantMessage.id
-          );
-          if (messageIndex !== -1) {
-            const updatedMessage = { ...messages.value[messageIndex] };
-            updatedMessage.content += token;
-            messages.value[messageIndex] = updatedMessage;
-            // Force Vue to update the UI
-            messages.value = [...messages.value];
-          }
-        },
+        conversationHistory: currentMessages.slice(0, -1),
+        // Only enable streaming for supported models
+        stream: supportsStreaming,
+        onToken: supportsStreaming
+          ? (token: string) => {
+              streamedTokenCount++;
+              if (streamedTokenCount % 10 === 0) {
+                logger.debug("Streaming progress", {
+                  tokens: streamedTokenCount,
+                  lastToken: token.slice(-10),
+                });
+              }
+
+              // Create new array with updated content
+              const updatedMessages = [...messages.value];
+              const messageIndex = updatedMessages.findIndex(
+                (m) => m.id === assistantMessage.id
+              );
+              if (messageIndex !== -1) {
+                updatedMessages[messageIndex] = {
+                  ...updatedMessages[messageIndex],
+                  content: updatedMessages[messageIndex].content + token,
+                };
+                messages.value = updatedMessages;
+              }
+            }
+          : undefined,
       });
 
-      console.log("✅ useAIChat: Got AI response:", {
-        contentLength: response.content.length,
-        usage: response.usage,
+      logger.debug("Response received", {
+        streaming: supportsStreaming,
+        streamedTokens: streamedTokenCount,
+        finalTokens: response.usage?.completion_tokens,
         cost: response.cost,
       });
 
-      // Update the assistant message with final content and metadata
-      const finalMessageIndex = messages.value.findIndex(
+      // Update final message state
+      const finalMessages = [...messages.value];
+      const finalMessageIndex = finalMessages.findIndex(
         (m) => m.id === assistantMessage.id
       );
       if (finalMessageIndex !== -1) {
-        const finalMessage = { ...messages.value[finalMessageIndex] };
-        finalMessage.content = response.content;
-        finalMessage.tokens = response.usage
-          ? {
-              prompt: response.usage.prompt_tokens || 0,
-              completion: response.usage.completion_tokens || 0,
-              total: response.usage.total_tokens || 0,
-            }
-          : {
-              prompt: 0,
-              completion: 0,
-              total: 0,
-            };
-        finalMessage.cost = response.cost || 0;
-        finalMessage.isStreaming = false;
-        messages.value[finalMessageIndex] = finalMessage;
-        // Force Vue to update the UI with final message
-        messages.value = [...messages.value];
+        finalMessages[finalMessageIndex] = {
+          ...finalMessages[finalMessageIndex],
+          content: response.content,
+          tokens: response.usage
+            ? {
+                prompt: response.usage.prompt_tokens || 0,
+                completion: response.usage.completion_tokens || 0,
+                total: response.usage.total_tokens || 0,
+              }
+            : undefined,
+          cost: response.cost,
+          isStreaming: false,
+        };
+        messages.value = finalMessages;
       }
 
-      // Update chat stats with user message tokens
-      const newUserStats = {
-        promptTokens: chatStats.value.promptTokens + estimatedTokens,
-        completionTokens: chatStats.value.completionTokens,
-        cost: chatStats.value.cost + estimatedCost,
-        totalMessages: messages.value.length,
-      };
-      chatStats.value = newUserStats;
-
-      // Update chat stats with AI response
+      // Update chat stats
       if (response.usage) {
-        console.log("📊 useAIChat: Updating chat stats with response:", {
-          usage: response.usage,
-          cost: response.cost,
-          currentStats: chatStats.value,
-        });
-
         chatStats.value = {
           promptTokens:
             chatStats.value.promptTokens + (response.usage.prompt_tokens || 0),
@@ -202,26 +276,28 @@ export function useAIChat() {
         };
       }
 
-      // Save to Supabase if configured
-      if (supabase && currentChatId.value) {
-        console.log("💾 useAIChat: Saving to Supabase...");
+      // Save to Supabase
+      if (currentChatId.value) {
         await updateChatHistory(currentChatId.value, messages.value);
-        console.log("✅ useAIChat: Saved to Supabase");
       }
 
       return assistantMessage;
     } catch (err) {
-      console.error("❌ useAIChat: Error sending message:", err);
-      error.value = err instanceof Error ? err.message : "Unknown error";
+      logger.error("Failed to send message", {
+        error: err,
+        model: currentModel.value,
+        contentLength: content.length,
+      });
+      error.value =
+        err instanceof Error ? err.message : "Failed to send message";
       throw err;
     } finally {
-      isLoading.value = false;
+      isSending.value = false;
     }
   };
 
-  // Chat management functions
   const clearChat = () => {
-    checkAuth(); // Check auth before proceeding
+    checkAuth();
     messages.value = [];
     currentChatId.value = null;
     chatStats.value = {
@@ -233,87 +309,19 @@ export function useAIChat() {
   };
 
   const setModel = (modelId: string) => {
-    checkAuth(); // Check auth before proceeding
+    checkAuth();
     if (availableModels.value.find((m) => m.id === modelId)) {
       currentModel.value = modelId;
     }
   };
 
   const updateTemperature = (value: number) => {
-    checkAuth(); // Check auth before proceeding
+    checkAuth();
     temperature.value = value;
   };
 
-  const loadChat = async (id: string) => {
-    checkAuth(); // Check auth before proceeding
-    try {
-      isLoading.value = true;
-      currentChatId.value = id;
-
-      // Load chat history from Supabase
-      const { data: chat, error: dbError } = await supabase
-        .from("vulpeculachats")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (dbError) throw dbError;
-
-      // Update state with proper cost preservation
-      messages.value = chat.messages.map((m: ChatMessage) => ({
-        ...m,
-        timestamp: m.timestamp || new Date().toISOString(),
-        model: m.model || currentModel.value, // Ensure model is preserved
-        tokens: m.tokens || {
-          prompt: 0,
-          completion: 0,
-          total: 0,
-        },
-        cost: m.cost || 0,
-      }));
-
-      // Recalculate chat stats from actual message data
-      const stats = messages.value.reduce(
-        (acc, msg) => {
-          // Get the correct cost for this message's model
-          const modelCost = openRouter.getModelCost(
-            msg.model || currentModel.value
-          );
-          const msgCost = msg.tokens?.total
-            ? (msg.tokens.total * modelCost) / 1000000
-            : msg.cost || 0;
-
-          return {
-            promptTokens: acc.promptTokens + (msg.tokens?.prompt || 0),
-            completionTokens:
-              acc.completionTokens + (msg.tokens?.completion || 0),
-            cost: acc.cost + msgCost,
-            totalMessages: acc.totalMessages + 1,
-          };
-        },
-        {
-          promptTokens: 0,
-          completionTokens: 0,
-          cost: 0,
-          totalMessages: 0,
-        }
-      );
-
-      currentModel.value = chat.metadata?.lastModel || currentModel.value;
-      chatStats.value = stats;
-
-      return chat;
-    } catch (err) {
-      console.error("Error loading chat:", err);
-      error.value = "Failed to load chat";
-      throw err;
-    } finally {
-      isLoading.value = false;
-    }
-  };
-
   const exportChat = () => {
-    checkAuth(); // Check auth before proceeding
+    checkAuth();
     const exportData = {
       messages: messages.value,
       model: currentModel.value,
@@ -332,10 +340,33 @@ export function useAIChat() {
     URL.revokeObjectURL(url);
   };
 
+  // Add chat history sync
+  const syncChatHistory = async () => {
+    try {
+      logger.debug("Syncing chat history");
+      const { data: chats, error: chatError } = await supabase
+        .from("vulpeculachats")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (chatError) throw chatError;
+
+      logger.debug("Chat history loaded", {
+        count: chats?.length || 0,
+      });
+
+      return chats || [];
+    } catch (err) {
+      logger.error("Failed to sync chat history", err);
+      throw err;
+    }
+  };
+
   return {
     // State
     messages,
     isLoading,
+    isSending,
     error,
     currentModel,
     modelName,
@@ -353,5 +384,8 @@ export function useAIChat() {
     loadChat,
     updateTemperature,
     exportChat,
+    createNewChat,
+    syncChatHistory,
+    chatBus,
   };
 }

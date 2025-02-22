@@ -41,16 +41,16 @@ const formatTimeAgo = (date: string | undefined) => {
     <div class="flex-1 space-y-2 overflow-hidden">
       <!-- Role & Timestamp -->
       <div class="flex items-center gap-2">
-        <span class="text-sm font-medium text-white/90">
+        <span class="text-sm font-medium dark:text-white/90">
           {{ message.role === 'assistant' ? modelName : 'You' }}
         </span>
-        <span class="text-xs text-white/40">
+        <span class="text-xs dark:text-white/40">
           {{ formatTimeAgo(message.timestamp) }}
         </span>
       </div>
 
       <!-- Content -->
-      <div class="prose prose-sm prose-invert max-w-none">
+      <div class="prose prose-sm dark:prose-invert max-w-none">
         <div v-html="renderedContent"></div>
       </div>
 

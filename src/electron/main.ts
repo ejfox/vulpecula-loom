@@ -64,12 +64,12 @@ const setupIpcHandlers = () => {
   ipcMain.handle(
     "store-set",
     (_event, key: keyof StoreSchema, value: StoreSchema[keyof StoreSchema]) => {
-      console.log(
-        "📤 Store Handler: Setting value for key:",
-        key,
-        "Value:",
-        value
-      );
+      // console.log(
+      //   "📤 Store Handler: Setting value for key:",
+      //   key,
+      //   "Value:",
+      //   value
+      // );
       try {
         const cloneableValue = JSON.parse(JSON.stringify(value));
         store.set(key, cloneableValue);

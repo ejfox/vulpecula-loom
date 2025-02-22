@@ -9,15 +9,15 @@
   -->
   <div class="h-screen flex flex-col bg-white dark:bg-gray-900">
     <!-- Base App Shell -->
-    <div v-if="isAuthenticated" class="relative flex flex-col flex-1">
+    <div v-if="isAuthenticated" class="relative flex flex-col flex-1 min-h-0">
       <!-- Title Bar -->
       <TitleBar :model-name="modelName" :is-loading="isLoading" :is-sending="isSending"
         :is-context-panel-open="isContextPanelOpen" :is-chat-sidebar-open="isChatSidebarOpen" :is-mobile="isMobile"
         @update:is-context-panel-open="isContextPanelOpen = $event"
-        @update:is-chat-sidebar-open="isChatSidebarOpen = $event" class="relative z-20" />
+        @update:is-chat-sidebar-open="isChatSidebarOpen = $event" class="relative z-20 flex-shrink-0" />
 
       <!-- Main Content Area -->
-      <div class="flex-1 flex min-h-0 p-1.5 gap-1.5 relative">
+      <div class="flex-1 flex min-h-0 p-1.5 gap-1.5 relative overflow-hidden">
         <!-- Chat Sidebar -->
         <Transition enter-active-class="transition-transform duration-300 ease-in-out"
           leave-active-class="transition-transform duration-300 ease-in-out" enter-from-class="-translate-x-full"
@@ -34,13 +34,19 @@
 
         <!-- Main Chat Area -->
         <main class="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-950 rounded-lg overflow-hidden relative">
-          <ChatMetadata :stats="chatStats" @export="exportChat" />
+          <ChatMetadata :stats="chatStats" @export="exportChat" class="flex-shrink-0" />
 
           <!-- API Key Warning -->
-          <ApiKeyWarning :has-valid-key="openRouter.hasValidKey" :saving-key="isLoading" @save-api-key="setApiKey" />
+          <ApiKeyWarning v-if="!openRouter.hasValidKey.value" :has-valid-key="openRouter.hasValidKey"
+            :saving-key="isLoading" @save-api-key="setApiKey" class="flex-shrink-0" />
+
+          <!-- Welcome Screen -->
+          <WelcomeScreen v-if="shouldShowWelcome" :has-valid-key="openRouter.hasValidKey.value" :saving-key="isLoading"
+            :model-name="modelName" :available-models="availableModels" :current-api-key="openRouter.apiKey.value"
+            @save-api-key="setApiKey" @start-chat="createNewChat" @open-settings="isContextPanelOpen = true" />
 
           <!-- Messages Container -->
-          <div ref="chatContainerRef" class="flex-1 overflow-y-auto p-4 space-y-4">
+          <div v-else ref="chatContainerRef" class="flex-1 overflow-y-auto p-4 space-y-4">
             <ChatMessage v-for="(message, index) in messages"
               :key="message.id || `msg-${currentChatId}-${index}-${message.timestamp}`" :message="message"
               :model-name="modelName" :index="index" :current-chat-id="currentChatId"
@@ -49,7 +55,7 @@
 
           <!-- Input Area -->
           <div class="relative z-20">
-            <ChatInput v-model="newMessage" :is-loading="isSending" :has-valid-key="hasValidKey"
+            <ChatInput v-model="messageInput" :is-loading="isSending" :has-valid-key="hasValidKey"
               :show-mention-popup="showMentionPopup" :is-searching-files="isSearchingFiles"
               :has-obsidian-vault="hasObsidianVault" :obsidian-search-results="obsidianSearchResults"
               @send="handleSendMessage" @mention-popup="(show) => showMentionPopup = show"
@@ -77,11 +83,15 @@
         <LoginOverlay />
       </div>
     </Transition>
+
+    <!-- Debug Overlay -->
+    <DebugOverlay :is-authenticated="isAuthenticated" :user-id="user?.id" :chat-history="chatHistory"
+      :current-chat-id="currentChatId" :messages="messages" :current-model="currentModel" :chat-stats="chatStats" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, computed } from 'vue'
 import { useLoadingSequence } from './composables/useLoadingSequence'
 import { useActiveUser } from './composables/useActiveUser'
 import { useBreakpoints } from '@vueuse/core'
@@ -94,13 +104,20 @@ import ChatMetadata from './components/ChatMetadata.vue'
 import ApiKeyWarning from './components/ApiKeyWarning.vue'
 import ChatMessage from './components/ChatMessage.vue'
 import ChatInput from './components/ChatInput.vue'
+import ContextAlchemyPanel from './components/ContextAlchemyPanel.vue'
+import WelcomeScreen from './components/WelcomeScreen.vue'
+import DebugOverlay from './components/DebugOverlay.vue'
 import type { ChatMessage as ChatMessageType, ChatStats, OpenRouterModel, Chat } from './types'
 import { useOpenRouter } from './composables/useOpenRouter'
 import { useSupabase } from './composables/useSupabase'
+import { useAIChat } from './composables/useAIChat'
+import { useStore } from './lib/store'
+import { useEventBus } from '@vueuse/core'
+import logger from './lib/logger'
 
 const { steps, addStep, startSequence, completeStep, isComplete } = useLoadingSequence()
-const { isAuthenticated } = useActiveUser()
-const { loadChatHistories } = useSupabase()
+const { isAuthenticated, user } = useActiveUser()
+const { loadChatHistories, supabase, saveChatHistory } = useSupabase()
 const breakpoints = useBreakpoints({
   mobile: 640
 })
@@ -115,25 +132,27 @@ watch(systemPrefersDark, (prefersDark) => {
   document.documentElement.classList.toggle('dark', prefersDark)
 }, { immediate: true })
 
+// Initialize composables
+const aiChat = useAIChat()
+const openRouter = useOpenRouter()
+const store = useStore()
+
 // Chat state
-const messages = ref<ChatMessageType[]>([])
-const newMessage = ref('')
-const currentChatId = ref('')
-const currentModel = ref('')
-const modelName = ref('')
+const messages = computed(() => aiChat.messages.value)
 const chatHistory = ref<Chat[]>([])
-const availableModels = ref<OpenRouterModel[]>([])
-const preferences = ref({ showOnlyPinnedModels: false })
-const chatStats = ref<ChatStats>({
-  promptTokens: 0,
-  completionTokens: 0,
-  cost: 0,
-  totalMessages: 0
+const availableModels = computed(() => {
+  return openRouter.availableModels.value?.map(model => ({
+    ...model, // Keep all original properties
+    name: model.name || model.id.split('/').pop() || '',
+    description: model.description
+  })) || []
 })
+const preferences = ref({ showOnlyPinnedModels: false })
 const chatContainerRef = ref<HTMLElement>()
+const messageInput = ref('')
 
 // UI state
-const isLoading = ref(false)
+const isLoading = computed(() => aiChat.isLoading.value)
 const isSending = ref(false)
 const isContextPanelOpen = ref(false)
 const isChatSidebarOpen = ref(true)
@@ -142,17 +161,172 @@ const isSearchingFiles = ref(false)
 const hasObsidianVault = ref(false)
 const obsidianSearchResults = ref([])
 const searchQuery = ref('')
-const hasValidKey = ref(false)
-const openRouter = useOpenRouter()
+
+// Computed properties from AI Chat
+const currentChatId = computed(() => aiChat.currentChatId.value)
+const currentModel = computed(() => aiChat.currentModel.value)
+const modelName = computed(() => aiChat.modelName.value)
+const chatStats = computed(() => aiChat.chatStats.value)
+
+// Sync hasValidKey with openRouter
+const hasValidKey = computed(() => openRouter.hasValidKey.value)
+
+// Add computed property for showing welcome screen
+const shouldShowWelcome = computed(() => {
+  return messages.value.length === 0 && chatHistory.value.length === 0
+})
+
+// Add function to sync chat history from Supabase
+const syncChatHistory = async () => {
+  try {
+    logger.debug("Starting chat history sync", {
+      currentChatId: currentChatId.value,
+      currentHistoryLength: chatHistory.value.length,
+      isAuthenticated: isAuthenticated.value,
+      userId: user?.value?.id
+    })
+
+    const histories = await loadChatHistories()
+    logger.debug("Raw histories from Supabase", {
+      count: histories?.length || 0,
+      firstChat: histories?.[0]?.id,
+      lastChat: histories?.[histories?.length - 1]?.id,
+      allIds: histories?.map(h => h.id)
+    })
+
+    if (histories) {
+      chatHistory.value = histories
+      logger.debug("Chat history updated", {
+        newLength: chatHistory.value.length,
+        currentChat: currentChatId.value,
+        chatTitles: chatHistory.value.map(c => ({ id: c.id, title: c.title })),
+        messageStats: chatHistory.value.map(c => ({
+          id: c.id,
+          messageCount: c.messages?.length || 0
+        }))
+      })
+    } else {
+      logger.warn("No histories returned from Supabase")
+    }
+  } catch (error) {
+    logger.error('Failed to sync chat history:', error)
+  }
+}
 
 // Methods
-const createNewChat = () => { }
-const loadChat = () => { }
-const setModel = () => { }
-const handleDeleteChat = () => { }
-const exportChat = () => { }
-const setApiKey = () => { }
-const handleSendMessage = () => { }
+const createNewChat = async () => {
+  try {
+    logger.debug("Creating new chat from UI", {
+      currentModel: currentModel.value,
+      currentHistoryLength: chatHistory.value.length
+    })
+
+    // Generate a UUID for the new chat that will be consistent between local and Supabase
+    const chatId = crypto.randomUUID()
+    logger.debug("Generated new chat ID", { chatId })
+
+    // Create new chat with the pre-generated ID
+    const newChat = {
+      id: chatId,
+      title: "New Chat",
+      messages: [],
+      model: currentModel.value,
+      metadata: {
+        lastModel: currentModel.value,
+        lastUpdated: new Date().toISOString(),
+        messageCount: 0,
+        stats: chatStats.value,
+      }
+    }
+
+    // Save to Supabase first
+    logger.debug("Saving new chat to Supabase", { chat: newChat })
+    const savedChat = await saveChatHistory(newChat)
+    logger.debug("Chat saved to Supabase", {
+      savedId: savedChat.id,
+      model: savedChat.model
+    })
+
+    // Update aiChat state
+    await aiChat.loadChat(savedChat.id)
+    logger.debug("Loaded new chat in aiChat", {
+      currentChatId: aiChat.currentChatId.value,
+      messageCount: aiChat.messages.value.length
+    })
+
+    // Sync chat history
+    await syncChatHistory()
+    logger.debug("History synced after new chat", {
+      historyLength: chatHistory.value.length,
+      newChatInHistory: chatHistory.value.some(c => c.id === savedChat.id),
+      allChatIds: chatHistory.value.map(c => c.id)
+    })
+
+    return savedChat
+  } catch (error) {
+    logger.error('Failed to create new chat:', error)
+    throw error
+  }
+}
+
+const loadChat = async (id: string) => {
+  try {
+    logger.debug("Loading chat", {
+      id,
+      currentChatId: currentChatId.value,
+      currentHistoryLength: chatHistory.value.length
+    })
+
+    await aiChat.loadChat(id)
+    logger.debug("Chat loaded in aiChat", {
+      loadedId: id,
+      messageCount: messages.value.length
+    })
+
+    await syncChatHistory()
+    logger.debug("History synced after loading chat", {
+      historyLength: chatHistory.value.length,
+      loadedChatInHistory: chatHistory.value.some(c => c.id === id),
+      currentChatMessages: messages.value.length
+    })
+  } catch (error) {
+    logger.error('Failed to load chat:', error)
+  }
+}
+
+const setModel = (modelId: string) => {
+  aiChat.setModel(modelId)
+}
+
+const handleDeleteChat = async (id: string) => {
+  // TODO: Implement chat deletion
+}
+
+const exportChat = () => {
+  aiChat.exportChat()
+}
+
+const setApiKey = async (key: string) => {
+  try {
+    await openRouter.saveApiKey(key)
+  } catch (error) {
+    console.error('Failed to save API key:', error)
+  }
+}
+
+const handleSendMessage = async (content: string) => {
+  if (!content.trim() || isSending.value) return;
+
+  isSending.value = true;
+  try {
+    await aiChat.sendMessage(content);
+  } catch (error) {
+    console.error('Failed to send message:', error);
+  } finally {
+    isSending.value = false;
+  }
+};
+
 const handleObsidianLink = () => { }
 const handlePruneBefore = (message: ChatMessageType) => {
   // Implement pruning logic
@@ -166,7 +340,7 @@ const formatModelCost = (modelId: string, cost: number): string => {
   return `$${cost.toFixed(4)}`
 }
 
-// Set up loading sequence
+// Watch for chat updates
 onMounted(async () => {
   try {
     // Add loading steps
@@ -213,29 +387,53 @@ onMounted(async () => {
     // Load models
     try {
       await openRouter.fetchAvailableModels()
-      availableModels.value = openRouter.availableModels.value || []
-      if (availableModels.value.length > 0) {
-        currentModel.value = availableModels.value[0].id
-        modelName.value = availableModels.value[0].name || availableModels.value[0].id.split('/').pop() || ''
+      const firstModel = openRouter.availableModels.value?.[0]
+      if (firstModel) {
+        aiChat.setModel(firstModel.id)
       }
       completeStep('models')
     } catch (error) {
-      console.error('Failed to load models:', error)
+      logger.error('Failed to load models:', error)
       completeStep('models', false)
     }
 
     // Load chat history
     try {
-      const history = await loadChatHistories()
-      chatHistory.value = history || []
+      // logger.debug("Loading initial chat history")
+      await syncChatHistory()
       completeStep('chat-history')
     } catch (error) {
-      console.error('Failed to load chat history:', error)
+      logger.error('Failed to load chat history:', error)
       completeStep('chat-history', false)
     }
   } catch (error) {
-    console.error('Error during loading sequence:', error)
+    logger.error('Error during loading sequence:', error)
     steps.value.forEach(step => completeStep(step.id, false))
+  }
+})
+
+// Watch chat history changes
+watch(chatHistory, (newHistory) => {
+  // logger.debug("Chat history changed", {
+  //   length: newHistory.length,
+  //   ids: newHistory.map(c => c.id),
+  //   currentChatId: currentChatId.value
+  // })
+}, { deep: true })
+
+// Watch for auth state to reload chat history
+watch(isAuthenticated, async (newValue) => {
+  logger.debug("Auth state changed", {
+    isAuthenticated: newValue,
+    userId: user?.value?.id,
+    currentHistoryLength: chatHistory.value.length
+  })
+
+  if (newValue) {
+    await syncChatHistory()
+  } else {
+    chatHistory.value = []
+    logger.debug("Cleared chat history due to logout")
   }
 })
 </script>
