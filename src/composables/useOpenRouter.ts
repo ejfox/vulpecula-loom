@@ -8,6 +8,7 @@ import type {
   ChatHistory,
   OpenRouterResponse,
   IncludedFile,
+  StoreSchema,
 } from "../types";
 import { useSupabase } from "./useSupabase";
 
@@ -152,16 +153,24 @@ export function useOpenRouter(): UseOpenRouterReturn {
             model.pricing?.completion;
           return isValid;
         })
-        .map((model: any) => ({
-          id: model.id,
-          name: model.name || model.id,
-          description: model.description,
-          context_length: model.context_length,
-          pricing: {
-            prompt: String(model.pricing.prompt),
-            completion: String(model.pricing.completion),
-          },
-        }));
+        .map(
+          (model: any): OpenRouterModel => ({
+            id: model.id,
+            name: model.name || model.id,
+            description: model.description,
+            context_length: model.context_length,
+            pricing: {
+              prompt: String(model.pricing.prompt),
+              completion: String(model.pricing.completion),
+            },
+            capabilities: {
+              vision: Boolean(model.capabilities?.vision),
+              tools: Boolean(model.capabilities?.tools),
+              function_calling: Boolean(model.capabilities?.function_calling),
+            },
+            provider: model.id.split("/")[0],
+          })
+        );
 
       availableModels.value = processedModels;
 
@@ -174,6 +183,39 @@ export function useOpenRouter(): UseOpenRouterReturn {
           "openai/gpt-3.5-turbo",
         ];
         await store.set("enabledModelIds", enabledModelIds.value);
+      }
+
+      // Set default vision model if none exists
+      let storedVisionModel = null;
+      try {
+        // Initialize with null if not set
+        const visionModelKey = "preferred-vision-model" as keyof StoreSchema;
+        if (!(await store.get(visionModelKey))) {
+          await store.set(visionModelKey, null);
+        }
+        storedVisionModel = await store.get(visionModelKey);
+      } catch (error) {
+        logger.error("Failed to get preferred vision model:", error);
+        // Ensure we have a valid initial state
+        await store.set("preferred-vision-model" as keyof StoreSchema, null);
+      }
+
+      // Only set a default if we don't have a valid model ID stored
+      if (!storedVisionModel) {
+        // Find the first model with vision capabilities
+        const defaultVisionModel = processedModels.find(
+          (m: OpenRouterModel) => m.capabilities?.vision
+        );
+        if (defaultVisionModel) {
+          try {
+            await store.set(
+              "preferred-vision-model" as keyof StoreSchema,
+              defaultVisionModel.id
+            );
+          } catch (error) {
+            logger.error("Failed to set default vision model:", error);
+          }
+        }
       }
     } catch (error) {
       logger.error("Failed to fetch models:", error);
@@ -400,6 +442,8 @@ export function useOpenRouter(): UseOpenRouterReturn {
             messages,
             temperature: options.temperature ?? temperature.value,
             stream: !!options.onToken,
+            // Add vision: true if the message contains images
+            vision: userMessage.includes("data:image/"),
           }),
         }
       );

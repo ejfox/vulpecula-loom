@@ -12,18 +12,34 @@ import { useDebounceFn } from "@vueuse/core";
 const chatBus = useEventBus("chat-updates");
 
 // State
-const messages = shallowRef<ChatMessage[]>([]);
+const messages = ref<ChatMessage[]>([]);
 const isLoading = ref(false);
 const isSending = ref(false);
 const error = ref<string | null>(null);
 const currentModel = ref<string>("anthropic/claude-3-sonnet");
 const currentChatId = ref<string | null>(null);
 const temperature = ref(0.7);
-const chatStats = ref<ChatStats>({
-  promptTokens: 0,
-  completionTokens: 0,
-  cost: 0,
-  totalMessages: 0,
+
+// Compute stats directly from messages
+const chatStats = computed<ChatStats>(() => {
+  return messages.value.reduce(
+    (stats, msg) => {
+      if (msg.tokens) {
+        stats.promptTokens += msg.tokens.prompt || 0;
+        stats.completionTokens += msg.tokens.completion || 0;
+      }
+      if (msg.cost) {
+        stats.cost += msg.cost;
+      }
+      return stats;
+    },
+    {
+      promptTokens: 0,
+      completionTokens: 0,
+      cost: 0,
+      totalMessages: messages.value.length,
+    }
+  );
 });
 
 // Models known not to support streaming
@@ -39,11 +55,29 @@ export function useAIChat() {
 
   // Add debounced save function inside the composable
   const debouncedSaveToSupabase = useDebounceFn(
-    async (chatId: string, msgs: ChatMessage[]) => {
+    async (chatId: string, messages: ChatMessage[]) => {
       try {
-        await updateChatHistory(chatId, msgs);
+        const { data, error } = await supabase
+          .from("vulpeculachats")
+          .update({
+            messages,
+            metadata: {
+              lastModel: currentModel.value,
+              lastUpdated: new Date().toISOString(),
+              messageCount: messages.length,
+            },
+          })
+          .eq("id", chatId);
+
+        if (error) throw error;
+
+        // Emit chat update event
+        chatBus.emit("chat-updated", { chatId, messages });
       } catch (err) {
-        logger.error("Failed to save chat history:", err);
+        logger.error("Failed to save chat to Supabase:", err);
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to save chat";
+        throw new Error(errorMessage);
       }
     },
     1000
@@ -127,12 +161,6 @@ export function useAIChat() {
       messages.value = chat.messages;
       currentChatId.value = chat.id;
       currentModel.value = chat.metadata?.lastModel || currentModel.value;
-      chatStats.value = chat.metadata?.stats || {
-        promptTokens: 0,
-        completionTokens: 0,
-        cost: 0,
-        totalMessages: 0,
-      };
 
       return chat;
     } catch (err) {
@@ -145,24 +173,40 @@ export function useAIChat() {
   // Send a message and get a response
   const sendMessage = async (
     content: string,
-    includedFiles?: IncludedFile[]
+    includedFiles?: IncludedFile[],
+    images?: File[]
   ) => {
-    checkAuth();
+    if (isSending.value) return;
+    isSending.value = true;
 
     try {
-      isSending.value = true;
+      checkAuth();
+
+      const currentMessages = messages.value;
       const supportsStreaming = !NON_STREAMING_MODELS.includes(
         currentModel.value
       );
 
-      // Create messages array copy for manipulation
-      const currentMessages = [...messages.value];
+      // Process images if provided
+      let imageContent = "";
+      if (images && images.length > 0) {
+        for (const image of images) {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(image);
+          });
 
-      // Add user message
+          // Add image markdown to content
+          imageContent += `\n![${image.name}](${base64})\n`;
+        }
+      }
+
+      // Create user message
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content,
+        content: content + imageContent, // Append images to content
         timestamp: new Date().toISOString(),
         model: currentModel.value,
         includedFiles,
@@ -279,12 +323,6 @@ export function useAIChat() {
     checkAuth();
     messages.value = [];
     currentChatId.value = null;
-    chatStats.value = {
-      promptTokens: 0,
-      completionTokens: 0,
-      cost: 0,
-      totalMessages: 0,
-    };
   };
 
   const setModel = (modelId: string) => {

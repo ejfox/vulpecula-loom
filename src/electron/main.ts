@@ -9,6 +9,10 @@ import type {
   ObsidianFile,
   ObsidianSearchOptions,
 } from "../types";
+import { createApplicationMenu } from "./menu";
+
+// Set the app name
+app.name = "Vulpecula";
 
 // Create the store instance
 const store = new ElectronStore<StoreSchema>({
@@ -86,6 +90,18 @@ const setupIpcHandlers = () => {
     }
   );
 
+  // Shell handlers
+  ipcMain.handle("shell:open-external", async (_event, url: string) => {
+    console.log("🔗 Shell Handler: Opening external URL:", url);
+    try {
+      await shell.openExternal(url);
+      console.log("✅ Shell Handler: Successfully opened URL");
+    } catch (err) {
+      console.error("❌ Shell Handler: Failed to open URL:", err);
+      throw err;
+    }
+  });
+
   // Obsidian handlers
   console.log("🔄 Setting up Obsidian handlers...");
 
@@ -94,7 +110,7 @@ const setupIpcHandlers = () => {
     "search-obsidian-files",
     async (_, options: ObsidianSearchOptions) => {
       console.log(
-        "��� Obsidian Handler: Searching files with options:",
+        "🔄 Obsidian Handler: Searching files with options:",
         options
       );
       try {
@@ -272,7 +288,7 @@ async function searchObsidianFiles(
   }
 }
 
-const createWindow = (): void => {
+const createWindow = async (): Promise<void> => {
   console.log("🔄 Creating main window...");
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -284,7 +300,6 @@ const createWindow = (): void => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
       preload: path.join(__dirname, "../preload/index.js"),
     },
   });
@@ -293,11 +308,11 @@ const createWindow = (): void => {
 
   // Load the app
   if (process.env.NODE_ENV === "development") {
-    mainWindow.loadURL("http://localhost:5173");
+    await mainWindow.loadURL("http://localhost:3000");
     // Open the DevTools in development
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../index.html"));
+    await mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 
   // Set up window event handlers
@@ -326,8 +341,13 @@ app.whenReady().then(async () => {
 
   // Then create the window
   console.log("🔄 Creating main window...");
-  createWindow();
+  await createWindow();
   console.log("✅ Main window created");
+
+  // Create the menu after window is created
+  console.log("🔄 Creating application menu...");
+  createApplicationMenu(mainWindow!);
+  console.log("✅ Application menu created");
 });
 
 // Quit when all windows are closed, except on macOS

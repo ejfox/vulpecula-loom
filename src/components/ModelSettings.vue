@@ -15,6 +15,7 @@
         <div class="w-48">Model</div>
         <div class="w-20">Context</div>
         <div class="w-40">Price (in/out)</div>
+        <div class="w-24">Features</div>
       </div>
 
       <!-- Pinned Models List -->
@@ -39,6 +40,12 @@
             ]">
               {{ formatModelCost(model.pricing) }}
             </span>
+            <div class="flex items-center gap-1 w-24 flex-shrink-0">
+              <span v-if="model.capabilities?.vision" 
+                class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                Vision
+              </span>
+            </div>
           </div>
           <button @click="unpinModel(model.id)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
             <span class="sr-only">Unpin model</span>
@@ -94,6 +101,7 @@
             <div class="w-48">Model</div>
             <div class="w-20">Context</div>
             <div class="w-40">Price (in/out)</div>
+            <div class="w-24">Features</div>
           </div>
         </div>
 
@@ -131,18 +139,43 @@
                 ]">
                   {{ formatModelCost(model.pricing) }}
                 </span>
+
+                <!-- Features -->
+                <div class="flex items-center gap-1 w-24 flex-shrink-0">
+                  <span v-if="model.capabilities?.vision" 
+                    class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                    Vision
+                  </span>
+                </div>
               </div>
 
-              <!-- Pin Button - Right Side -->
-              <button @click="pinModel(model.id)" :disabled="pinnedModels.length >= 9"
-                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 flex-shrink-0"
-                :title="pinnedModels.length >= 9 ? 'Maximum 9 models can be pinned' : 'Pin model'">
-                <span class="sr-only">Pin model</span>
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-              </button>
+              <!-- Actions - Right Side -->
+              <div class="flex items-center gap-2">
+                <!-- Vision Model Toggle -->
+                <button v-if="model.capabilities?.vision"
+                  @click="setPreferredVisionModel(model.id)"
+                  :class="[
+                    'text-xs px-2 py-1 rounded-md transition-colors',
+                    preferredVisionModel === model.id
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                  ]"
+                  :title="preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model'">
+                  <span class="sr-only">{{ preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model' }}</span>
+                  <i class="i-carbon-camera" />
+                </button>
+
+                <!-- Pin Button -->
+                <button @click="pinModel(model.id)" :disabled="pinnedModels.length >= 9"
+                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 flex-shrink-0"
+                  :title="pinnedModels.length >= 9 ? 'Maximum 9 models can be pinned' : 'Pin model'">
+                  <span class="sr-only">Pin model</span>
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -175,17 +208,21 @@ const pinnedModels = ref<OpenRouterModel[]>([])
 const searchQuery = ref('')
 const sortBy = ref<'name' | 'promptCost' | 'completionCost' | 'totalCost' | 'contextLength'>('name')
 const sortDirection = ref<'asc' | 'desc'>('asc')
+const preferredVisionModel = ref('')
 
 // Initialize pinned models
 const initializePinnedModels = async () => {
   try {
-    const pinnedIds = await window.electron?.store.get('pinned-models') || []
-    const pinned = props.availableModels.filter(model => pinnedIds.includes(model.id))
-    pinnedModels.value = pinned
+    const store = window.electron?.store;
+    if (!store) return;
+    
+    const pinnedIds = (await store.get('pinned-models')) || [];
+    const pinned = props.availableModels.filter(model => pinnedIds.includes(model.id));
+    pinnedModels.value = pinned;
   } catch (err) {
-    logger.error('Failed to initialize pinned models', err)
+    logger.error('Failed to initialize pinned models', err);
   }
-}
+};
 
 // Watch for changes in available models to re-initialize pinned models
 watch(() => props.availableModels, async () => {
@@ -196,21 +233,27 @@ watch(() => props.availableModels, async () => {
 
 // Pin/unpin model functions
 const pinModel = async (modelId: string) => {
-  const model = props.availableModels.find(m => m.id === modelId)
-  if (!model) return
+  const model = props.availableModels.find(m => m.id === modelId);
+  if (!model) return;
 
-  const pinnedIds = await window.electron?.store.get('pinned-models') || []
+  const store = window.electron?.store;
+  if (!store) return;
+
+  const pinnedIds = (await store.get('pinned-models')) || [];
   if (!pinnedIds.includes(modelId)) {
-    await window.electron?.store.set('pinned-models', [...pinnedIds, modelId])
-    pinnedModels.value.push(model)
+    await store.set('pinned-models', [...pinnedIds, modelId]);
+    pinnedModels.value.push(model);
   }
-}
+};
 
 const unpinModel = async (modelId: string) => {
-  const pinnedIds = await window.electron?.store.get('pinned-models') || []
-  await window.electron?.store.set('pinned-models', pinnedIds.filter(id => id !== modelId))
-  pinnedModels.value = pinnedModels.value.filter(model => model.id !== modelId)
-}
+  const store = window.electron?.store;
+  if (!store) return;
+
+  const pinnedIds = (await store.get('pinned-models')) || [];
+  await store.set('pinned-models', pinnedIds.filter((id: string) => id !== modelId));
+  pinnedModels.value = pinnedModels.value.filter(model => model.id !== modelId);
+};
 
 // Get unpinned models
 const unpinnedModels = computed(() => {
@@ -388,9 +431,45 @@ const getProviderIcon = (modelId: string): string => {
 
 // Initialize on mount
 onMounted(async () => {
-  logger.debug('ModelSettings mounted')
+  logger.debug('ModelSettings mounted');
   if (props.availableModels.length > 0) {
-    await initializePinnedModels()
+    await initializePinnedModels();
   }
-})
+
+  const store = window.electron?.store;
+  if (!store) return;
+
+  try {
+    // Initialize with null if not set
+    if (!(await store.get('preferred-vision-model'))) {
+      await store.set('preferred-vision-model', null);
+    }
+    const storedModel = await store.get('preferred-vision-model');
+    if (storedModel) {
+      preferredVisionModel.value = storedModel;
+    }
+  } catch (err) {
+    logger.error('Failed to load preferred vision model', err);
+    // Ensure we have a valid initial state
+    await store.set('preferred-vision-model', null);
+  }
+});
+
+const setPreferredVisionModel = async (modelId: string) => {
+  const store = window.electron?.store;
+  if (!store) return;
+
+  try {
+    // Ensure we're setting a valid string or null
+    if (modelId && typeof modelId === 'string' && modelId.trim()) {
+      await store.set('preferred-vision-model', modelId);
+      preferredVisionModel.value = modelId;
+    } else {
+      await store.set('preferred-vision-model', null);
+      preferredVisionModel.value = '';
+    }
+  } catch (err) {
+    logger.error('Failed to set preferred vision model', err);
+  }
+};
 </script>

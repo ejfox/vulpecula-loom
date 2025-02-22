@@ -52,15 +52,11 @@
                   class="absolute -left-0.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-500/40">
                 </div>
 
-                <!-- Chat Icon -->
-                <svg class="w-4 h-4 opacity-60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
+
 
                 <!-- Chat Info -->
-                <div class="flex-1 min-w-0 ml-2">
-                  <div class="flex items-center gap-2">
+                <div class="flex-1 min-w-0 ml-0.5 overflow-hidden">
+                  <div class="flex items-center gap-0.5">
                     <span class="flex-1 truncate font-medium">
                       {{ chat.title || 'Untitled Chat' }}
                     </span>
@@ -76,13 +72,13 @@
                       (Forked)
                     </span>
                   </div>
-                  <div class="mt-1 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                  <div class="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                     <!-- Age -->
-                    <span class="flex items-center gap-1">
-                      <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <span class="flex items-center gap-1 min-w-24">
+                      <!--                       <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                      </svg> -->
                       {{ formatChatAge(chat.metadata?.lastUpdated || chat.created_at) }}
                     </span>
                     <!-- Message Count -->
@@ -91,9 +87,20 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                       </svg>
-                      {{ getMessageCounts(chat).human + getMessageCounts(chat).ai }}
-                      <span class="opacity-50">({{ getMessageCounts(chat).human }}h/{{ getMessageCounts(chat).ai
-                        }}a)</span>
+                      <span class="relative">
+                        {{ getMessageCounts(chat).human }}+{{ getMessageCounts(chat).ai }}
+                        <span
+                          class="absolute -top-8 left-0 bg-gray-900 dark:bg-gray-700 text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {{ getMessageCounts(chat).human }} human messages
+                        </span>
+                      </span>
+                      <span class="opacity-50">
+                        ({{ getMessageCounts(chat).human }}+{{ getMessageCounts(chat).ai }})
+                        <span
+                          class="absolute -top-8 left-0 bg-gray-900 dark:bg-gray-700 text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {{ getMessageCounts(chat).ai }} AI messages
+                        </span>
+                      </span>
                     </span>
                     <!-- Token Stats -->
                     <span class="flex items-center gap-1">

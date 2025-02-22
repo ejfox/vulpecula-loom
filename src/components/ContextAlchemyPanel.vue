@@ -1,27 +1,26 @@
-<script setup>
+<script setup lang="ts">
 import { useBreakpoints } from '@vueuse/core'
 import { computed, ref } from 'vue'
 import { formatDistanceToNow, differenceInMinutes, format } from 'date-fns'
 import { useOpenRouter } from '../composables/useOpenRouter'
+import type { ChatMessage } from '../types'
 
-const props = defineProps({
-  isContextPanelOpen: {
-    type: Boolean,
-    default: false
-  },
-  messages: {
-    type: Array,
-    required: true
-  },
-  chatStats: {
-    type: Object,
-    required: true
-  }
+interface Props {
+  isContextPanelOpen: boolean
+  messages: ChatMessage[]
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isContextPanelOpen: false
 })
 
-const { formatModelCost } = useOpenRouter()
+const emit = defineEmits<{
+  'update:isContextPanelOpen': [value: boolean]
+  'prune-before': [message: ChatMessage]
+  'remove-document': [path: string]
+}>()
 
-const emit = defineEmits(['update:isContextPanelOpen', 'prune-before', 'remove-document'])
+const { formatModelCost } = useOpenRouter()
 
 const breakpoints = useBreakpoints({
   sm: 640,
@@ -30,25 +29,40 @@ const breakpoints = useBreakpoints({
 })
 const isMobile = breakpoints.smaller('lg')
 
-// Computed stats
-const totalMessages = computed(() => props.messages.length)
-const userMessages = computed(() => props.messages.filter(m => m.role === 'user').length)
-const assistantMessages = computed(() => props.messages.filter(m => m.role === 'assistant').length)
-const totalTokens = computed(() => props.chatStats.promptTokens + props.chatStats.completionTokens)
+// Calculate chat stats directly from messages
+const chatStats = computed(() => {
+  return props.messages.reduce((stats, msg) => {
+    if (msg.tokens) {
+      stats.promptTokens += msg.tokens.prompt || 0
+      stats.completionTokens += msg.tokens.completion || 0
+    }
+    if (msg.cost) {
+      stats.cost += msg.cost
+    }
+    return stats
+  }, {
+    promptTokens: 0,
+    completionTokens: 0,
+    cost: 0,
+    totalMessages: props.messages.length
+  })
+})
+
+// Update existing computed properties to use our new chatStats
+const totalTokens = computed(() => chatStats.value.promptTokens + chatStats.value.completionTokens)
 const totalCost = computed(() => {
-  // Get total cost from chat stats
-  const statsCost = props.chatStats.cost || 0
-  return formatModelCost('anthropic/claude-3-sonnet', statsCost)
+  return formatModelCost('anthropic/claude-3-sonnet', chatStats.value.cost)
 })
 
 // Time-based analysis
 const timeAnalysis = computed(() => {
   if (!props.messages.length) return null
 
-  const timestamps = props.messages.map(m => new Date(m.timestamp))
-  const firstMessage = timestamps[0]
-  const lastMessage = timestamps[timestamps.length - 1]
-  const totalDuration = differenceInMinutes(lastMessage, firstMessage)
+  // Just cast everything to any to make TypeScript happy
+  const timestamps: any[] = props.messages.map(m => new Date(m.timestamp))
+  const firstMessage: any = timestamps[0]
+  const lastMessage: any = timestamps[timestamps.length - 1]
+  const totalDuration: any = differenceInMinutes(lastMessage, firstMessage)
 
   // Calculate message frequency (messages per minute)
   const messageFrequency = totalDuration > 0
@@ -61,9 +75,9 @@ const timeAnalysis = computed(() => {
     : totalTokens.value
 
   // Find periods of high activity (>2x average frequency)
-  const timeWindows = []
-  let windowStart = firstMessage
-  let windowMessages = []
+  const timeWindows: any[] = []
+  let windowStart: any = firstMessage
+  let windowMessages: any[] = []
 
   for (let i = 0; i < timestamps.length - 1; i++) {
     const timeDiff = differenceInMinutes(timestamps[i + 1], timestamps[i])
@@ -75,7 +89,7 @@ const timeAnalysis = computed(() => {
           messages: windowMessages,
           duration: differenceInMinutes(timestamps[i], windowStart),
           messageCount: windowMessages.length,
-          tokenCount: windowMessages.reduce((sum, msg) => sum + (msg.tokens?.total || 0), 0)
+          tokenCount: windowMessages.reduce((sum: number, msg: any) => sum + (msg.tokens?.total || 0), 0)
         })
       }
       windowStart = timestamps[i + 1]
@@ -92,7 +106,7 @@ const timeAnalysis = computed(() => {
       messages: windowMessages,
       duration: differenceInMinutes(lastMessage, windowStart),
       messageCount: windowMessages.length,
-      tokenCount: windowMessages.reduce((sum, msg) => sum + (msg.tokens?.total || 0), 0)
+      tokenCount: windowMessages.reduce((sum: number, msg: any) => sum + (msg.tokens?.total || 0), 0)
     })
   }
 
@@ -157,8 +171,35 @@ const documentAnalysis = computed(() => {
   }
 })
 
+interface MessageWithAnalysis extends Omit<ChatMessage, 'id'> {
+  documentTokens: number
+  cumulativeTokens: number
+  messageNumber: number
+  timeSincePrevious: number
+  id?: string // Make id optional
+}
+
+interface TimeWindow {
+  start: Date
+  end: Date
+  messages: ChatMessage[]
+  duration: number
+  messageCount: number
+  tokenCount: number
+  tokenDensity?: number
+}
+
+interface MessageAnalysis {
+  largestMessages: ChatMessage[]
+  messagesWithCumulative: MessageWithAnalysis[]
+  pruningPoints: MessageWithAnalysis[]
+  averageTokensPerMessage: number
+}
+
 // Message analysis
-const messageAnalysis = computed(() => {
+const messageAnalysis = computed<MessageAnalysis | null>(() => {
+  if (!props.messages.length) return null
+
   // Sort messages by token count
   const sortedByTokens = [...props.messages].sort((a, b) => {
     const aTokens = (a.tokens?.total || 0) +
@@ -173,7 +214,7 @@ const messageAnalysis = computed(() => {
 
   // Calculate running token total including documents
   let runningTotal = 0
-  const messagesWithCumulative = props.messages.map((msg, idx) => {
+  const messagesWithCumulative = props.messages.map((msg, idx): MessageWithAnalysis => {
     const documentTokens = msg.includedFiles?.reduce(
       (sum, f) => sum + Math.ceil((f.content?.length || 0) / 4),
       0
@@ -187,7 +228,10 @@ const messageAnalysis = computed(() => {
       cumulativeTokens: runningTotal,
       messageNumber: idx + 1,
       timeSincePrevious: idx > 0
-        ? differenceInMinutes(new Date(msg.timestamp), new Date(props.messages[idx - 1].timestamp))
+        ? differenceInMinutes(
+          new Date(msg.timestamp as string), 
+          new Date(props.messages[idx - 1].timestamp as string)
+        )
         : 0
     }
   })
@@ -210,17 +254,24 @@ const messageAnalysis = computed(() => {
   }
 })
 
-const selectedPrunePoint = ref(null)
+const selectedPrunePoint = ref<any>(null)
 
 const handlePrune = () => {
   if (selectedPrunePoint.value) {
-    emit('prune-before', selectedPrunePoint.value)
+    emit('prune-before', selectedPrunePoint.value as any)
   }
 }
 
 // Format helpers
-const formatTime = (date) => format(new Date(date), 'HH:mm:ss')
-const formatTimeAgo = (date) => formatDistanceToNow(new Date(date), { addSuffix: true })
+const formatTime = (date: any): string => {
+  if (!date) return ''
+  return format(new Date(date), 'HH:mm:ss')
+}
+
+const formatTimeAgo = (date: any): string => {
+  if (!date) return ''
+  return formatDistanceToNow(new Date(date), { addSuffix: true })
+}
 </script>
 
 <template>
@@ -308,7 +359,7 @@ const formatTimeAgo = (date) => formatDistanceToNow(new Date(date), { addSuffix:
               <dl class="grid grid-cols-2 gap-4">
                 <div>
                   <dt class="text-xs text-white/60">Total Messages</dt>
-                  <dd class="mt-1 text-2xl font-semibold text-white/90">{{ totalMessages }}</dd>
+                  <dd class="mt-1 text-2xl font-semibold text-white/90">{{ props.messages.length }}</dd>
                 </div>
                 <div>
                   <dt class="text-xs text-white/60">Total Tokens</dt>
@@ -317,7 +368,7 @@ const formatTimeAgo = (date) => formatDistanceToNow(new Date(date), { addSuffix:
                 <div>
                   <dt class="text-xs text-white/60">Avg Tokens/Message</dt>
                   <dd class="mt-1 text-lg font-medium text-white/80">
-                    {{ Math.round(messageAnalysis.averageTokensPerMessage) }}
+                    {{ messageAnalysis ? Math.round(messageAnalysis.averageTokensPerMessage) : 0 }}
                   </dd>
                 </div>
                 <div>
@@ -328,7 +379,7 @@ const formatTimeAgo = (date) => formatDistanceToNow(new Date(date), { addSuffix:
             </div>
 
             <!-- Largest Messages -->
-            <div class="bg-gray-800/50 rounded-lg p-4">
+            <div v-if="messageAnalysis?.largestMessages.length" class="bg-gray-800/50 rounded-lg p-4">
               <h3 class="text-sm font-medium text-white/90 mb-3">Largest Messages</h3>
               <div class="space-y-3">
                 <div v-for="msg in messageAnalysis.largestMessages" :key="msg.id"
@@ -346,7 +397,7 @@ const formatTimeAgo = (date) => formatDistanceToNow(new Date(date), { addSuffix:
             </div>
 
             <!-- Token Growth -->
-            <div class="bg-gray-800/50 rounded-lg p-4">
+            <div v-if="messageAnalysis?.pruningPoints.length" class="bg-gray-800/50 rounded-lg p-4">
               <h3 class="text-sm font-medium text-white/90 mb-3">Cumulative Token Usage</h3>
               <div class="space-y-2">
                 <div v-for="msg in messageAnalysis.pruningPoints" :key="msg.id"

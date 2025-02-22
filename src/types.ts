@@ -45,6 +45,7 @@ export interface IncludedFile {
   path: string;
   content: string;
   type?: string;
+  title: string;
 }
 
 export interface Chat {
@@ -104,6 +105,11 @@ export interface OpenRouterModel {
     prompt: string;
     completion: string;
   };
+  capabilities?: {
+    vision?: boolean;
+    tools?: boolean;
+    function_calling?: boolean;
+  };
   provider?: string;
 }
 
@@ -124,4 +130,40 @@ declare global {
   interface Window {
     electron?: ElectronAPI;
   }
+}
+
+export interface ChatInputProps {
+  modelValue: string;
+  isLoading: boolean;
+  hasValidKey: boolean;
+  showMentionPopup: boolean;
+  isSearchingFiles: boolean;
+  hasObsidianVault: boolean;
+  obsidianSearchResults: ObsidianFile[];
+}
+
+export interface Mention {
+  startIndex: number;
+  endIndex: number;
+  file: {
+    title: string;
+    path: string;
+  };
+}
+
+export interface ObsidianFile {
+  title: string;
+  path: string;
+  content?: string;
+}
+
+export interface OpenRouterResponse {
+  content: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  cost?: number;
+  model?: string;
 }

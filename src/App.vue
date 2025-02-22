@@ -65,7 +65,7 @@
       </div>
 
       <!-- Context Panel -->
-      <ContextAlchemyPanel :is-context-panel-open="isContextPanelOpen" :messages="messages" :chat-stats="chatStats"
+      <ContextAlchemyPanel :is-context-panel-open="isContextPanelOpen" :messages="messages"
         @update:is-context-panel-open="isContextPanelOpen = $event" @prune-before="handlePruneBefore"
         @remove-document="handleRemoveDocument" class="z-30" />
     </div>
@@ -87,14 +87,21 @@
     <!-- Debug Overlay -->
     <DebugOverlay :is-authenticated="isAuthenticated" :user-id="user?.id" :chat-history="chatHistory"
       :current-chat-id="currentChatId" :messages="messages" :current-model="currentModel" :chat-stats="chatStats" />
+
+    <!-- Settings Modal -->
+    <SettingsModal v-model="isSettingsModalOpen" :theme="isDark ? 'dark' : 'light'" :show-progress-bar="true"
+      :show-only-pinned-models="preferences.showOnlyPinnedModels" :available-models="availableModels"
+      @update:theme="(theme) => isDark = theme === 'dark'" @update:show-progress-bar="(value) => { }"
+      @validate-api-key="setApiKey"
+      @update:show-only-pinned-models="(value) => preferences.showOnlyPinnedModels = value" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch, computed, nextTick } from 'vue'
+import { onMounted, ref, watch, computed, nextTick, onUnmounted } from 'vue'
 import { useLoadingSequence } from './composables/useLoadingSequence'
 import { useActiveUser } from './composables/useActiveUser'
-import { useBreakpoints } from '@vueuse/core'
+import { useBreakpoints, useLocalStorage, useEventBus, useKeyModifier, onKeyStroke } from '@vueuse/core'
 import { useTheme } from './composables/useTheme'
 import LoadingOverlay from './components/LoadingOverlay.vue'
 import LoginOverlay from './components/LoginOverlay.vue'
@@ -107,12 +114,12 @@ import ChatInput from './components/ChatInput.vue'
 import ContextAlchemyPanel from './components/ContextAlchemyPanel.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import DebugOverlay from './components/DebugOverlay.vue'
+import SettingsModal from './components/SettingsModal.vue'
 import type { ChatMessage as ChatMessageType, ChatStats, OpenRouterModel, Chat } from './types'
 import { useOpenRouter } from './composables/useOpenRouter'
 import { useSupabase } from './composables/useSupabase'
 import { useAIChat } from './composables/useAIChat'
 import { useStore } from './lib/store'
-import { useEventBus } from '@vueuse/core'
 import logger from './lib/logger'
 
 const { steps, addStep, startSequence, completeStep, isComplete } = useLoadingSequence()
@@ -137,6 +144,77 @@ const aiChat = useAIChat()
 const openRouter = useOpenRouter()
 const store = useStore()
 
+// Setup IPC listeners for menu actions
+onMounted(() => {
+  if (window.electronAPI) {
+    const cleanupFns = [
+      window.electronAPI.handleMenuAction('menu:open-settings', () => {
+        console.log('Opening settings from menu')
+        isSettingsModalOpen.value = true
+      }),
+
+      window.electronAPI.handleMenuAction('menu:new-chat', () => {
+        console.log('Creating new chat from menu')
+        createNewChat()
+      }),
+
+      window.electronAPI.handleMenuAction('menu:export-chat', () => {
+        console.log('Exporting chat from menu')
+        exportChat()
+      }),
+
+      window.electronAPI.handleMenuAction('menu:toggle-chat-sidebar', () => {
+        console.log('Toggling chat sidebar from menu')
+        isChatSidebarOpen.value = !isChatSidebarOpen.value
+      }),
+
+      window.electronAPI.handleMenuAction('menu:toggle-context-panel', () => {
+        console.log('Toggling context panel from menu')
+        isContextPanelOpen.value = !isContextPanelOpen.value
+      })
+    ]
+
+    // Cleanup listeners when component unmounts
+    onUnmounted(() => {
+      console.log('Cleaning up IPC listeners')
+      cleanupFns.forEach(cleanup => cleanup && cleanup())
+    })
+  }
+})
+
+// Keyboard shortcuts
+const meta = useKeyModifier('Meta')
+
+// Toggle panels with keyboard shortcuts
+onKeyStroke('k', (e) => {
+  if (meta.value) {
+    e.preventDefault()
+    isChatSidebarOpen.value = !isChatSidebarOpen.value
+  }
+})
+
+onKeyStroke('/', (e) => {
+  if (meta.value) {
+    e.preventDefault()
+    isContextPanelOpen.value = !isContextPanelOpen.value
+  }
+})
+
+onKeyStroke('n', (e) => {
+  if (meta.value) {
+    e.preventDefault()
+    createNewChat()
+  }
+})
+
+// Add settings shortcut (Command + ,)
+onKeyStroke(',', (e) => {
+  if (meta.value) {
+    e.preventDefault()
+    isSettingsModalOpen.value = !isSettingsModalOpen.value
+  }
+})
+
 // Chat state
 const messages = computed(() => aiChat.messages.value)
 const chatHistory = ref<Chat[]>([])
@@ -147,15 +225,19 @@ const availableModels = computed(() => {
     description: model.description
   })) || []
 })
-const preferences = ref({ showOnlyPinnedModels: false })
+const preferences = useLocalStorage('preferences', {
+  showOnlyPinnedModels: false,
+  // Add other preferences here as we need them
+})
 const chatContainerRef = ref<HTMLElement>()
 const messageInput = ref('')
 
 // UI state
 const isLoading = computed(() => aiChat.isLoading.value)
 const isSending = ref(false)
-const isContextPanelOpen = ref(false)
-const isChatSidebarOpen = ref(true)
+const isContextPanelOpen = useLocalStorage('isContextPanelOpen', false)
+const isChatSidebarOpen = useLocalStorage('isChatSidebarOpen', !isMobile)
+const isSettingsModalOpen = ref(false)
 const showMentionPopup = ref(false)
 const isSearchingFiles = ref(false)
 const hasObsidianVault = ref(false)
@@ -277,7 +359,14 @@ const loadChat = async (id: string) => {
       currentHistoryLength: chatHistory.value.length
     })
 
+    isSending.value = true // Show loading state in input
     await aiChat.loadChat(id)
+
+    // Scroll to bottom when loading a new chat
+    nextTick(() => {
+      scrollToBottom()
+    })
+
     logger.debug("Chat loaded in aiChat", {
       loadedId: id,
       messageCount: messages.value.length
@@ -291,6 +380,8 @@ const loadChat = async (id: string) => {
     })
   } catch (error) {
     logger.error('Failed to load chat:', error)
+  } finally {
+    isSending.value = false
   }
 }
 
@@ -314,12 +405,12 @@ const setApiKey = async (key: string) => {
   }
 }
 
-const handleSendMessage = async (content: string) => {
-  if (!content.trim() || isSending.value) return;
+const handleSendMessage = async (content: string, images?: File[]) => {
+  if (!content.trim() && (!images || images.length === 0) || isSending.value) return;
 
   isSending.value = true;
   try {
-    await aiChat.sendMessage(content);
+    await aiChat.sendMessage(content, undefined, images);
   } catch (error) {
     console.error('Failed to send message:', error);
   } finally {
