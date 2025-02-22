@@ -61,7 +61,7 @@
     "electron-store": "^10.0.0",
     "fuse.js": "^7.0.0",
     "highlight.js": "^11.10.0",
-    "lucide-vue-next": "^0.462.0",
+    "lucide-vue-next": "^0.475.0",
     "marked": "^15.0.2",
     "path-browserify": "^1.0.1",
     "radix-vue": "^1.9.10",
