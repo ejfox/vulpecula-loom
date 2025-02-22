@@ -1,7 +1,7 @@
 {
   "name": "vulpecula-loom",
   "productName": "Vulpecula Loom",
-  "version": "0.0.3-2",
+  "version": "0.0.3-3",
   "main": "./dist-electron/main/index.js",
   "description": "A Second Brain for Your AI",
   "author": "EJ Fox",
