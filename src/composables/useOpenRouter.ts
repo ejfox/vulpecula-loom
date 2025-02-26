@@ -48,6 +48,7 @@ export interface UseOpenRouterReturn {
     }
   ) => Promise<OpenRouterResponse>;
   validateApiKey: (key: string) => Promise<boolean>;
+  generateChatSummary: (messages: ChatMessage[]) => Promise<string>;
 }
 
 // Singleton instance
@@ -583,6 +584,80 @@ export function useOpenRouter(): UseOpenRouterReturn {
     // Implementation
   }
 
+  /**
+   * Generate a summary of a chat using the Gemini model
+   * @param messages The messages to summarize
+   * @returns A promise that resolves to the summary
+   */
+  const generateChatSummary = async (
+    messages: ChatMessage[]
+  ): Promise<string> => {
+    if (!hasValidKey.value) {
+      throw new Error("No valid API key");
+    }
+
+    // Skip if there are no messages or just one message
+    if (!messages.length || messages.length < 2) {
+      return "Empty chat";
+    }
+
+    try {
+      // Create a prompt for summarization
+      const summaryPrompt = `
+        Please create a very brief single-sentence summary (max 80 characters) of this conversation.
+        Focus on the main topic or problem being discussed.
+        Should be concise and informative, like a tweet.
+
+        ${messages
+          .map(
+            (m) =>
+              `${m.role}: ${m.content.substring(0, 250)}${
+                m.content.length > 250 ? "..." : ""
+              }`
+          )
+          .join("\n\n")}
+      `;
+
+      // Use the cheap Gemini flash model
+      const model = "google/gemini-2.0-flash-lite-001";
+
+      // Send request to OpenRouter
+      const response = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey.value}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": window.location.origin,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: summaryPrompt }],
+            temperature: 0.3, // Lower temperature for more deterministic output
+            max_tokens: 100, // Limit to short responses
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        logger.error("Summary generation failed", { status: response.status });
+        return "";
+      }
+
+      const data = await response.json();
+      const summary = data.choices[0].message.content.trim();
+
+      // Track usage of the model
+      trackModelUsage(model);
+
+      return summary;
+    } catch (err) {
+      logger.error("Failed to generate summary", err);
+      return "";
+    }
+  };
+
   // Create singleton instance
   instance = {
     apiKey,
@@ -611,6 +686,7 @@ export function useOpenRouter(): UseOpenRouterReturn {
     exportChat,
     sendMessage,
     validateApiKey,
+    generateChatSummary,
   };
 
   return instance;

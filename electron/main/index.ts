@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { setupIpcHandlers } from "../ipc";
+import fs from "node:fs";
+
+// Import the createApplicationMenu function directly
+import { createApplicationMenu } from "../menu";
 
 // The built directory structure
 //
@@ -34,6 +38,9 @@ async function createWindow() {
 
   // Set up all IPC handlers in one place
   setupIpcHandlers();
+
+  // Set up the application menu
+  createApplicationMenu(win);
 
   // Add CSP headers for development
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -103,4 +110,15 @@ ipcMain.handle("window-maximize", () => {
 
 ipcMain.handle("window-close", () => {
   win?.close();
+});
+
+// Add print handler
+ipcMain.handle("print-window", () => {
+  if (win) {
+    win.webContents.print({
+      silent: false,
+      printBackground: true,
+      deviceName: "",
+    });
+  }
 });

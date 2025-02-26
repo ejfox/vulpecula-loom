@@ -168,3 +168,12 @@ export interface OpenRouterResponse {
   cost?: number;
   model?: string;
 }
+
+export interface StoreSchema {
+  "api-key": string;
+  "enabled-model-ids": string[];
+  "recent-model-ids": string[];
+  enabledModelIds: string[];
+  recentModelIds: string[];
+  "preferred-vision-model": string | null;
+}

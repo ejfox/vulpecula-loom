@@ -7,6 +7,13 @@ import logger from "../lib/logger";
 import type { ChatMessage, ChatStats, IncludedFile, Chat } from "../types";
 import { useEventBus } from "@vueuse/core";
 import { useDebounceFn } from "@vueuse/core";
+import {
+  processCommands,
+  addCommandsToSystemMessage,
+  COMMAND_TAGS,
+  parseModelCommands as parseModelCommandsFromLibrary,
+  type ParsedCommands,
+} from "../lib/aiCommands";
 
 // Create event bus for chat updates
 const chatBus = useEventBus("chat-updates");
@@ -28,8 +35,51 @@ const chatStats = ref<any>({
   totalMessages: 0,
 });
 
+// Calculate chat stats from messages
+const calculateChatStats = (chatMessages: ChatMessage[]): ChatStats => {
+  // Start with default values
+  const stats = {
+    promptTokens: 0,
+    completionTokens: 0,
+    cost: 0,
+    totalMessages: chatMessages.length,
+    responseTime: 0,
+  };
+
+  // Iterate through all messages to accumulate stats
+  chatMessages.forEach((message) => {
+    // Add token counts if available
+    if (message.tokens) {
+      stats.promptTokens += message.tokens.prompt || 0;
+      stats.completionTokens += message.tokens.completion || 0;
+    }
+
+    // Add cost if available
+    if (message.cost) {
+      stats.cost += message.cost;
+    }
+  });
+
+  return stats;
+};
+
 // Models known not to support streaming
 const NON_STREAMING_MODELS = ["meta/llama-2-70b-chat", "meta/llama-2-13b-chat"];
+
+// Command regex patterns
+const RENAME_CHAT_REGEX = /<rename-chat\s+newname="([^"]+)"\s*\/>/i;
+
+// Parse model commands from content
+const parseModelCommands = parseModelCommandsFromLibrary;
+
+// Check if chat needs auto-titling
+const shouldAutoGenerateTitle = (messages: ChatMessage[]) => {
+  return (
+    messages.length === 5 ||
+    messages.length === 10 ||
+    messages.length % 20 === 0
+  );
+};
 
 // Exports
 export function useAIChat() {
@@ -38,6 +88,48 @@ export function useAIChat() {
   const { supabase, saveChatHistory, updateChatHistory } = useSupabase();
   const { isAuthenticated } = useActiveUser();
   const store = useStore();
+
+  // Update chat stats from messages and save to Supabase
+  const updateChatStats = async (
+    chatId: string | null,
+    chatMessages: ChatMessage[]
+  ) => {
+    if (!chatId) return;
+
+    try {
+      // Calculate stats from messages
+      const newStats = calculateChatStats(chatMessages);
+
+      // Update local state
+      chatStats.value = newStats;
+
+      // Get current metadata from Supabase
+      const { data: chat } = await supabase
+        .from("vulpeculachats")
+        .select("metadata")
+        .eq("id", chatId)
+        .single();
+
+      // Create updated metadata with new stats
+      const updatedMetadata = {
+        ...(chat?.metadata || {}),
+        lastUpdated: new Date().toISOString(),
+        stats: newStats,
+      };
+
+      // Save to Supabase
+      await updateChatHistory(chatId, chatMessages, updatedMetadata);
+
+      logger.debug("Chat stats updated:", {
+        chatId,
+        promptTokens: newStats.promptTokens,
+        completionTokens: newStats.completionTokens,
+        cost: newStats.cost,
+      });
+    } catch (error) {
+      logger.error("Failed to update chat stats:", error);
+    }
+  };
 
   // Add debounced save function inside the composable
   const debouncedSaveToSupabase = useDebounceFn(
@@ -148,6 +240,15 @@ export function useAIChat() {
       currentChatId.value = chat.id;
       currentModel.value = chat.metadata?.lastModel || currentModel.value;
 
+      // First try to load stats from metadata
+      if (chat.metadata?.stats) {
+        chatStats.value = chat.metadata.stats;
+        logger.debug("Loaded chat stats from metadata", chatStats.value);
+      } else {
+        // If no stats in metadata, calculate and save them
+        await updateChatStats(chat.id, chat.messages);
+      }
+
       return chat;
     } catch (err) {
       logger.error("Failed to load chat:", err);
@@ -254,6 +355,13 @@ export function useAIChat() {
           : undefined,
       } as any);
 
+      // Check for model commands in the response
+      const parsedCommands = parseModelCommands(response.content);
+      let finalContent = parsedCommands.originalContent;
+
+      // Process all commands using the helper function
+      processCommands(parsedCommands, currentChatId.value, chatBus);
+
       // Update final message state
       const finalMessages = [...messages.value];
       const finalMessageIndex = finalMessages.findIndex(
@@ -262,7 +370,7 @@ export function useAIChat() {
       if (finalMessageIndex !== -1) {
         finalMessages[finalMessageIndex] = {
           ...finalMessages[finalMessageIndex],
-          content: response.content,
+          content: finalContent,
           tokens: response.usage
             ? {
                 prompt: response.usage.prompt_tokens || 0,
@@ -278,15 +386,26 @@ export function useAIChat() {
 
       // Update chat stats
       if (response.usage) {
-        chatStats.value = {
-          promptTokens:
-            chatStats.value.promptTokens + (response.usage.prompt_tokens || 0),
-          completionTokens:
-            chatStats.value.completionTokens +
-            (response.usage.completion_tokens || 0),
-          cost: chatStats.value.cost + (response.cost || 0),
-          totalMessages: messages.value.length,
-        };
+        await updateChatStats(currentChatId.value, messages.value);
+      }
+
+      // Check if we should auto-generate a title based on message count
+      if (shouldAutoGenerateTitle(messages.value) && currentChatId.value) {
+        // Fetch chat to check its title
+        const { data: chat } = await supabase
+          .from("vulpeculachats")
+          .select("title")
+          .eq("id", currentChatId.value)
+          .single();
+
+        const defaultTitles = ["new chat", "untitled chat", "untitled", ""];
+        if (
+          chat &&
+          (!chat.title || defaultTitles.includes(chat.title.toLowerCase()))
+        ) {
+          // Emit event to suggest generating a title
+          chatBus.emit("suggest-auto-title", { chatId: currentChatId.value });
+        }
       }
 
       // Save final state to Supabase
@@ -359,6 +478,68 @@ export function useAIChat() {
     }
   };
 
+  // Generate a title for a chat
+  const generateChatTitle = async (chatId: string): Promise<string | null> => {
+    try {
+      // Load chat to get messages
+      const { data: chat } = await supabase
+        .from("vulpeculachats")
+        .select("*")
+        .eq("id", chatId)
+        .single();
+
+      if (!chat || !chat.messages || chat.messages.length < 3) {
+        return null;
+      }
+
+      // Get first few messages (up to 10)
+      const messagesToUse = chat.messages.slice(
+        0,
+        Math.min(chat.messages.length, 10)
+      );
+
+      // Generate title using the cheap Gemini model
+      const titlePrompt = `
+        Please create a very brief title (max 40 characters) for this conversation.
+        Make it descriptive but concise.
+
+        ${messagesToUse
+          .map(
+            (m: ChatMessage) =>
+              `${m.role}: ${m.content.substring(0, 150)}${
+                m.content.length > 150 ? "..." : ""
+              }`
+          )
+          .join("\n\n")}
+      `;
+
+      const model = "google/gemini-2.0-flash-lite-001";
+
+      // Use OpenRouter to generate the title
+      const response = await openRouter.sendMessage(titlePrompt, {
+        model,
+        temperature: 0.3,
+      });
+
+      if (response && response.content) {
+        const suggestedTitle = response.content.trim();
+
+        // Emit event for UI to handle
+        chatBus.emit("auto-title-generated", {
+          chatId,
+          title: suggestedTitle,
+        });
+
+        return suggestedTitle;
+      }
+
+      return null;
+    } catch (error) {
+      logger.error("Failed to generate chat title", error);
+      return null;
+    }
+  };
+
   return {
     // State
     messages,
@@ -383,6 +564,7 @@ export function useAIChat() {
     exportChat,
     createNewChat,
     syncChatHistory,
+    generateChatTitle,
     chatBus,
   };
 }

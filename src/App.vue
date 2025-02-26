@@ -15,7 +15,9 @@
         :is-context-panel-open="isContextPanelOpen" :is-chat-sidebar-open="isChatSidebarOpen" :is-mobile="isMobile"
         :current-model="currentModel" :available-models="availableModels"
         @update:is-context-panel-open="isContextPanelOpen = $event"
-        @update:is-chat-sidebar-open="isChatSidebarOpen = $event" @set-model="setModel" class="relative z-20 flex-shrink-0" />
+        @update:is-chat-sidebar-open="isChatSidebarOpen = $event" @set-model="setModel"
+        @open-settings="isSettingsModalOpen = true" @open-api-keys="isSettingsModalOpen = true"
+        class="relative z-20 flex-shrink-0" />
 
       <!-- Main Content Area -->
       <div class="flex-1 flex min-h-0 p-1.5 gap-1.5 relative overflow-hidden">
@@ -27,8 +29,8 @@
             'bg-white dark:bg-gray-950 rounded-lg overflow-hidden flex flex-col',
             isMobile ? 'fixed inset-y-0 left-0 z-30 w-80 mt-10' : 'w-[38.2%] max-w-sm flex-shrink-0'
           ]">
-            <ChatSidebar :chat-history="chatHistory" :current-chat-id="currentChatId"
-              @new-chat="createNewChat" @load-chat="loadChat" @delete-chat="handleDeleteChat" />
+            <ChatSidebar :chat-history="chatHistory" :current-chat-id="currentChatId" @new-chat="createNewChat"
+              @load-chat="loadChat" @delete-chat="handleDeleteChat" />
           </div>
         </Transition>
 
@@ -94,6 +96,18 @@
       @update:theme="(theme) => isDark = theme === 'dark'" @update:show-progress-bar="(value) => { }"
       @validate-api-key="setApiKey" @select-model="setModel"
       @update:show-only-pinned-models="(value) => preferences.showOnlyPinnedModels = value" />
+
+    <!-- Keyboard Shortcuts Modal -->
+    <KeyboardShortcutsModal :is-open="isKeyboardShortcutsModalOpen" @close="isKeyboardShortcutsModalOpen = false" />
+
+    <!-- Clear Chat History Confirmation Modal -->
+    <ConfirmationModal :is-open="isClearChatHistoryModalOpen" title="Clear Chat History"
+      message="Are you sure you want to clear all chat history? This action cannot be undone."
+      confirm-text="Clear All History" cancel-text="Cancel" :is-dangerous="true" @confirm="confirmClearChatHistory"
+      @cancel="isClearChatHistoryModalOpen = false" />
+
+    <!-- Add title banner component -->
+    <ChatTitleBanner />
   </div>
 </template>
 
@@ -126,6 +140,9 @@ import ContextAlchemyPanel from './components/ContextAlchemyPanel.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import DebugOverlay from './components/DebugOverlay.vue'
 import SettingsModal from './components/SettingsModal.vue'
+import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue'
+import ConfirmationModal from './components/ConfirmationModal.vue'
+import ChatTitleBanner from './components/ChatTitleBanner.vue'
 
 // Types
 import type { ChatMessage as ChatMessageType, ChatStats, Chat } from './types'
@@ -137,7 +154,7 @@ import logger from './lib/logger'
 // Core application state and composables
 // =========================================
 const { isAuthenticated, user } = useActiveUser()
-const { loadChatHistories, saveChatHistory } = useSupabase()
+const { loadChatHistories, saveChatHistory, deleteAllChats } = useSupabase()
 const { isDark, systemPrefersDark } = useTheme()
 const aiChat = useAIChat()
 const openRouter = useOpenRouter()
@@ -169,6 +186,8 @@ const obsidianSearchResults = ref([])
 const searchQuery = ref('')
 const chatContainerRef = ref<HTMLElement>()
 const messageInput = ref('')
+const isKeyboardShortcutsModalOpen = ref(false)
+const isClearChatHistoryModalOpen = ref(false)
 
 // =========================================
 // Chat state
@@ -178,7 +197,13 @@ const chatHistory = ref<Chat[]>([])
 const currentChatId = computed(() => aiChat.currentChatId.value)
 const currentModel = computed(() => aiChat.currentModel.value)
 const modelName = computed(() => aiChat.modelName.value)
-const chatStats = computed(() => aiChat.chatStats.value)
+const chatStats = computed<ChatStats>(() => aiChat.chatStats.value || {
+  promptTokens: 0,
+  completionTokens: 0,
+  cost: 0,
+  totalMessages: 0,
+  responseTime: 0
+})
 const hasValidKey = computed(() => openRouter.hasValidKey.value)
 
 // User preferences
@@ -213,7 +238,7 @@ watch(systemPrefersDark, (prefersDark) => {
 // =========================================
 const setupKeyboardShortcuts = () => {
   const meta = useKeyModifier('Meta')
-  
+
   // Toggle chat sidebar (Cmd+K)
   onKeyStroke('k', (e) => {
     if (meta.value) {
@@ -221,7 +246,7 @@ const setupKeyboardShortcuts = () => {
       isChatSidebarOpen.value = !isChatSidebarOpen.value
     }
   })
-  
+
   // Toggle context panel (Cmd+/)
   onKeyStroke('/', (e) => {
     if (meta.value) {
@@ -229,7 +254,7 @@ const setupKeyboardShortcuts = () => {
       isContextPanelOpen.value = !isContextPanelOpen.value
     }
   })
-  
+
   // New chat (Cmd+N)
   onKeyStroke('n', (e) => {
     if (meta.value) {
@@ -237,7 +262,7 @@ const setupKeyboardShortcuts = () => {
       createNewChat()
     }
   })
-  
+
   // Settings (Cmd+,)
   onKeyStroke(',', (e) => {
     if (meta.value) {
@@ -252,31 +277,76 @@ const setupKeyboardShortcuts = () => {
 // =========================================
 const setupIpcListeners = () => {
   if (!window.electron) return []
-  
+
   return [
-    window.electron.onOpenSettings(() => {
+    window.electron.ipc.on("menu:open-settings", () => {
       logger.debug('Opening settings from menu')
       isSettingsModalOpen.value = true
     }),
 
-    window.electron.onNewChat(() => {
+    window.electron.ipc.on("menu:new-chat", () => {
       logger.debug('Creating new chat from menu')
       createNewChat()
     }),
 
-    window.electron.onExportChat(() => {
+    window.electron.ipc.on("menu:export-chat", () => {
       logger.debug('Exporting chat from menu')
       exportChat()
     }),
 
-    window.electron.onToggleChatSidebar(() => {
+    window.electron.ipc.on("menu:toggle-chat-sidebar", () => {
       logger.debug('Toggling chat sidebar from menu')
       isChatSidebarOpen.value = !isChatSidebarOpen.value
     }),
 
-    window.electron.onToggleContextPanel(() => {
+    window.electron.ipc.on("menu:toggle-context-panel", () => {
       logger.debug('Toggling context panel from menu')
       isContextPanelOpen.value = !isContextPanelOpen.value
+    }),
+
+    // New menu action handlers
+    window.electron.ipc.on("menu:print-chat", () => {
+      logger.debug('Printing chat from menu')
+      if (window.electron) {
+        window.electron.ipc.invoke('print-window')
+      } else {
+        window.print()
+      }
+    }),
+
+    window.electron.ipc.on("menu:search-in-chat", () => {
+      logger.debug('Search in chat from menu')
+      // TODO: Implement search functionality
+      // This could open a search overlay or focus a search input
+    }),
+
+    window.electron.ipc.on("menu:search-across-chats", () => {
+      logger.debug('Search across chats from menu')
+      // TODO: Implement cross-chat search
+      // This would likely open the sidebar with a search field focused
+      isChatSidebarOpen.value = true
+    }),
+
+    window.electron.ipc.on("menu:clear-chat-history", () => {
+      logger.debug('Clear chat history from menu')
+      showClearChatHistoryModal()
+    }),
+
+    window.electron.ipc.on("menu:regenerate-response", () => {
+      logger.debug('Regenerate response from menu')
+      // TODO: Implement regenerate functionality
+      // This should regenerate the last AI response
+    }),
+
+    window.electron.ipc.on("menu:change-model", () => {
+      logger.debug('Change model from menu')
+      // Open settings modal with model selection tab focused
+      isSettingsModalOpen.value = true
+    }),
+
+    window.electron.ipc.on("menu:show-keyboard-shortcuts", () => {
+      logger.debug('Show keyboard shortcuts from menu')
+      isKeyboardShortcutsModalOpen.value = true
     })
   ]
 }
@@ -294,7 +364,7 @@ const syncChatHistory = async () => {
     })
 
     const histories = await loadChatHistories()
-    
+
     if (histories) {
       chatHistory.value = histories
       logger.debug("Chat history updated", {
@@ -318,7 +388,7 @@ const createNewChat = async () => {
 
     // Generate a UUID for the new chat
     const chatId = crypto.randomUUID()
-    
+
     // Create new chat with the pre-generated ID
     const newChat = {
       id: chatId,
@@ -335,13 +405,13 @@ const createNewChat = async () => {
 
     // Save to Supabase first
     const savedChat = await saveChatHistory(newChat)
-    
+
     // Update aiChat state
     await aiChat.loadChat(savedChat.id)
-    
+
     // Sync chat history
     await syncChatHistory()
-    
+
     return savedChat
   } catch (error) {
     logger.error('Failed to create new chat:', error)
@@ -380,6 +450,41 @@ const handleDeleteChat = async (id: string) => {
 
 const exportChat = () => {
   aiChat.exportChat()
+}
+
+/**
+ * Show the confirmation modal for clearing chat history
+ */
+const showClearChatHistoryModal = () => {
+  isClearChatHistoryModalOpen.value = true
+}
+
+/**
+ * Clear all chat history after confirmation
+ */
+const confirmClearChatHistory = async () => {
+  try {
+    logger.debug("Clearing all chat history")
+
+    // Close the modal first
+    isClearChatHistoryModalOpen.value = false
+
+    // Create a new chat to switch to
+    const newChat = await createNewChat()
+
+    // Delete all chat history from Supabase
+    await deleteAllChats()
+
+    // Clear local chat history
+    chatHistory.value = [newChat]
+
+    // Load the new chat
+    await loadChat(newChat.id)
+
+    logger.debug("All chat history cleared successfully")
+  } catch (error) {
+    logger.error('Failed to clear chat history:', error)
+  }
 }
 
 // =========================================
@@ -422,7 +527,7 @@ const formatModelCost = (modelId: string, cost: number): string => {
 // =========================================
 // Placeholder functions for future implementation
 // =========================================
-const handleObsidianLink = () => { 
+const handleObsidianLink = () => {
   // Placeholder for Obsidian integration
 }
 
@@ -516,13 +621,13 @@ const initializeLoadingSequence = async () => {
 onMounted(async () => {
   // Setup keyboard shortcuts
   setupKeyboardShortcuts()
-  
+
   // Setup IPC listeners for desktop app
   const cleanupFns = setupIpcListeners()
-  
+
   // Initialize loading sequence
   await initializeLoadingSequence()
-  
+
   // Cleanup listeners when component unmounts
   onUnmounted(() => {
     logger.debug('Cleaning up IPC listeners')

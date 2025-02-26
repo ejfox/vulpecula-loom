@@ -19,6 +19,7 @@ export interface StoreSchema {
   uiState?: {
     chatSidebarOpen: boolean;
   };
+  [key: string]: any;
 }
 
 export interface ObsidianFile {

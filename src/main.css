@@ -3,4 +3,78 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Any additional global styles */
+/* macOS-inspired UI components */
+@layer components {
+  /* Window styling */
+  .window {
+    @apply bg-white dark:bg-oled-black rounded-lg shadow-xl border border-macos-gray-200 dark:border-ayu-dark-line overflow-hidden;
+  }
+  
+  /* Buttons - more native looking */
+  .btn {
+    @apply px-3 py-1.5 rounded-md transition-colors duration-150 
+           text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1;
+  }
+  
+  .btn-primary {
+    @apply bg-macos-blue hover:bg-blue-600 text-white dark:bg-ayu-dark-entity dark:hover:bg-ayu-dark-tag;
+  }
+  
+  .btn-secondary {
+    @apply bg-macos-gray-100 hover:bg-macos-gray-200 text-macos-gray-800 
+           dark:bg-ayu-dark-panel dark:text-ayu-dark-editor-fg dark:hover:bg-ayu-dark-line;
+  }
+  
+  /* macOS-like inputs */
+  .input {
+    @apply bg-white dark:bg-ayu-dark-panel border border-macos-gray-200 dark:border-ayu-dark-line
+           rounded-md px-3 py-2 text-sm text-gray-900 dark:text-ayu-dark-editor-fg
+           placeholder:text-macos-gray-400 dark:placeholder:text-macos-gray-500
+           focus:outline-none focus:ring-2 focus:ring-macos-blue dark:focus:ring-ayu-dark-accent
+           focus:border-transparent transition-colors duration-150;
+  }
+  
+  /* Title bar styling */
+  .title-bar {
+    @apply h-10 flex items-center px-3 bg-macos-gray-50 dark:bg-ayu-dark-bg 
+           border-b border-macos-gray-200 dark:border-ayu-dark-line;
+  }
+  
+  /* Sidebar styling */
+  .sidebar {
+    @apply bg-macos-gray-50 dark:bg-ayu-dark-panel p-4 min-h-full border-r 
+           border-macos-gray-200 dark:border-ayu-dark-line;
+  }
+  
+  /* Card styling */
+  .card {
+    @apply bg-white dark:bg-ayu-dark-panel rounded-lg p-4 shadow-sm 
+           border border-macos-gray-200 dark:border-ayu-dark-line;
+  }
+
+  /* OLED optimized dark mode UI patterns */
+  .oled-optimized {
+    @apply dark:bg-oled-black dark:text-ayu-dark-editor-fg;
+  }
+}
+
+/* Additional global styles */
+body {
+  @apply bg-macos-gray-100 dark:bg-oled-black text-gray-900 dark:text-ayu-dark-editor-fg;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Add Ayu text colors for syntax highlighting */
+.ayu-syntax-tag { @apply text-ayu-light-tag dark:text-ayu-dark-tag; }
+.ayu-syntax-func { @apply text-ayu-light-func dark:text-ayu-dark-func; }
+.ayu-syntax-entity { @apply text-ayu-light-entity dark:text-ayu-dark-entity; }
+.ayu-syntax-string { @apply text-ayu-light-string dark:text-ayu-dark-string; }
+.ayu-syntax-keyword { @apply text-ayu-light-keyword dark:text-ayu-dark-keyword; }
+.ayu-syntax-constant { @apply text-ayu-light-constant dark:text-ayu-dark-constant; }
+.ayu-syntax-comment { @apply text-ayu-light-comment dark:text-ayu-dark-comment; }
+
+/* Dark mode optimization for OLED displays */
+.dark {
+  color-scheme: dark;
+}

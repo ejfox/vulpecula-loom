@@ -50,9 +50,11 @@ const chatStats = computed(() => {
 
 // Update existing computed properties to use our new chatStats
 const totalTokens = computed(() => chatStats.value.promptTokens + chatStats.value.completionTokens)
+const hasTotalTokens = computed(() => totalTokens.value > 0)
 const totalCost = computed(() => {
   return formatModelCost('anthropic/claude-3-sonnet', chatStats.value.cost)
 })
+const hasCost = computed(() => chatStats.value.cost > 0)
 
 // Time-based analysis
 const timeAnalysis = computed(() => {
@@ -361,17 +363,17 @@ const formatTimeAgo = (date: any): string => {
                   <dt class="text-xs text-white/60">Total Messages</dt>
                   <dd class="mt-1 text-2xl font-semibold text-white/90">{{ props.messages.length }}</dd>
                 </div>
-                <div>
+                <div v-if="hasTotalTokens">
                   <dt class="text-xs text-white/60">Total Tokens</dt>
                   <dd class="mt-1 text-2xl font-semibold text-white/90">{{ totalTokens }}</dd>
                 </div>
-                <div>
+                <div v-if="hasTotalTokens && messageAnalysis?.averageTokensPerMessage > 0">
                   <dt class="text-xs text-white/60">Avg Tokens/Message</dt>
                   <dd class="mt-1 text-lg font-medium text-white/80">
                     {{ messageAnalysis ? Math.round(messageAnalysis.averageTokensPerMessage) : 0 }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="hasCost">
                   <dt class="text-xs text-white/60">Total Cost</dt>
                   <dd class="mt-1 text-lg font-medium text-white/80">{{ totalCost }}</dd>
                 </div>

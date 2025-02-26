@@ -26,6 +26,9 @@ export function setupStoreHandlers() {
   ipcMain.handle("store-get", (_event, key: keyof StoreSchema) => {
     try {
       const value = store.get(key);
+      if (value === undefined) {
+        return null;
+      }
       return JSON.parse(JSON.stringify(value));
     } catch (err) {
       console.error(

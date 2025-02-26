@@ -51,17 +51,17 @@
 
         <!-- Token Stats -->
         <template v-if="chatStats">
-          <div class="flex items-center justify-between">
+          <div v-if="chatStats.promptTokens > 0" class="flex items-center justify-between">
             <span class="text-gray-400">Prompt Tokens:</span>
             <span class="font-mono">{{ chatStats.promptTokens }}</span>
           </div>
-          <div class="flex items-center justify-between">
+          <div v-if="chatStats.completionTokens > 0" class="flex items-center justify-between">
             <span class="text-gray-400">Completion Tokens:</span>
             <span class="font-mono">{{ chatStats.completionTokens }}</span>
           </div>
-          <div class="flex items-center justify-between">
+          <div v-if="chatStats.cost > 0" class="flex items-center justify-between">
             <span class="text-gray-400">Total Cost:</span>
-            <span class="font-mono">${{ chatStats.cost?.toFixed(4) }}</span>
+            <span class="font-mono">${{ chatStats.cost.toFixed(4) }}</span>
           </div>
         </template>
       </div>

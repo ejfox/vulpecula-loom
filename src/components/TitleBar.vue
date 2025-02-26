@@ -39,15 +39,15 @@ const props = defineProps({
 })
 
 const { user, signOut } = useActiveUser()
-const showUserMenu = ref(false)
+const isUserMenuOpen = ref(false)
 
-const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen', 'set-model'])
+const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen', 'set-model', 'open-settings', 'open-api-keys'])
 
 // Handle sign out
 const handleSignOut = async () => {
   try {
     await signOut()
-    showUserMenu.value = false
+    isUserMenuOpen.value = false
   } catch (error) {
     console.error('Failed to sign out:', error)
   }
@@ -64,7 +64,7 @@ const handleModelChange = (event: Event) => {
 // Group models by provider
 const groupedModels = computed(() => {
   const groups: Record<string, OpenRouterModel[]> = {}
-  
+
   props.availableModels.forEach(model => {
     const provider = model.id.split('/')[0]
     if (!groups[provider]) {
@@ -72,7 +72,7 @@ const groupedModels = computed(() => {
     }
     groups[provider].push(model)
   })
-  
+
   return groups
 })
 
@@ -85,8 +85,8 @@ const getModelDisplayName = (modelId: string): string => {
 // Close menu when clicking outside
 onMounted(() => {
   const handleClickOutside = (e: MouseEvent) => {
-    if (showUserMenu.value && !e.defaultPrevented) {
-      showUserMenu.value = false
+    if (isUserMenuOpen.value && !e.target.closest('.user-menu')) {
+      isUserMenuOpen.value = false
     }
   }
   document.addEventListener('click', handleClickOutside)
@@ -94,100 +94,141 @@ onMounted(() => {
     document.removeEventListener('click', handleClickOutside)
   })
 })
+
+// Expose window controls for Electron
+const electronWindow = {
+  close: () => {
+    // If using Electron
+    if (typeof window !== 'undefined' && window.electron) {
+      window.electron.ipc.invoke('close-window')
+    }
+  },
+  minimize: () => {
+    if (typeof window !== 'undefined' && window.electron) {
+      window.electron.ipc.invoke('minimize-window')
+    }
+  },
+  maximize: () => {
+    if (typeof window !== 'undefined' && window.electron) {
+      window.electron.ipc.invoke('maximize-window')
+    }
+  }
+}
+
+// Handle opening settings
+const openSettings = () => {
+  emit('open-settings')
+  isUserMenuOpen.value = false
+}
+
+// Handle opening API keys
+const openApiKeys = () => {
+  emit('open-api-keys')
+  isUserMenuOpen.value = false
+}
 </script>
 
 <template>
-  <header class="h-10 drag-handle flex items-center justify-center relative
-           border-b transition-all duration-1000
-           bg-white dark:bg-gray-950 
-           border-gray-200 dark:border-gray-800/50" :class="[
-            isLoading
-              ? 'animate-gradient-slow bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 dark:from-gray-800/50 dark:via-gray-700/50 dark:to-gray-800/50 bg-200%'
-              : isSending
-                ? 'animate-gradient-slower bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 dark:from-blue-900/50 dark:via-blue-800/50 dark:to-blue-900/50 bg-200%'
-                : 'backdrop-blur-sm'
-          ]">
-    <!-- Left side (with traffic light spacing) -->
-    <div class="absolute left-[70px] flex items-center gap-2">
-      <button @click="emit('update:isChatSidebarOpen', !isChatSidebarOpen)"
-        class="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-        :class="{ 'text-gray-700 dark:text-gray-300': isChatSidebarOpen }">
-        <span class="sr-only">Toggle chat sidebar</span>
-        <svg class="w-5 h-5 transition-transform duration-200" :class="{ 'rotate-180': !isChatSidebarOpen }" fill="none"
-          viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
+  <header class="title-bar drag-handle">
+    <!-- macOS window controls -->
+    <div class="flex space-x-2 mr-4 self-center">
+      <button class="w-3 h-3 rounded-full bg-red-500 hover:brightness-110" @click="electronWindow.close()" />
+      <button class="w-3 h-3 rounded-full bg-yellow-500 hover:brightness-110" @click="electronWindow.minimize()" />
+      <button class="w-3 h-3 rounded-full bg-green-500 hover:brightness-110" @click="electronWindow.maximize()" />
     </div>
 
-    <!-- Center-aligned content -->
-    <div class="flex items-center gap-2 text-xs relative w-48">
-      <select :value="currentModel" @change="handleModelChange"
-        class="w-full py-1 px-3 pr-6 text-xs bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800
-               border border-gray-200 dark:border-gray-700 rounded-md
-               text-gray-600 dark:text-gray-400 
-               focus:outline-none focus:ring-1 focus:ring-blue-500
-               appearance-none cursor-pointer
-               transition-colors duration-150">
-        <template v-if="availableModels && availableModels.length > 0">
-          <optgroup v-for="(models, provider) in groupedModels" :key="provider" :label="provider.toUpperCase()">
+    <!-- Title -->
+    <h1 class="text-center font-semibold text-sm text-macos-gray-900 dark:text-ayu-dark-editor-fg">
+      Vulpecula
+    </h1>
+
+    <!-- Model Selector -->
+    <div class="relative mx-auto">
+      <select :value="currentModel" @change="handleModelChange" class="appearance-none bg-transparent border border-macos-gray-200 dark:border-ayu-dark-line 
+               rounded-md px-3 py-1 text-xs focus:ring-1 focus:ring-macos-blue focus:border-macos-blue
+               text-macos-gray-900 dark:text-ayu-dark-editor-fg focus:outline-none">
+        <template v-if="groupedModels && Object.keys(groupedModels).length">
+          <optgroup v-for="(models, provider) in groupedModels" :key="provider" :label="provider">
             <option v-for="model in models" :key="model.id" :value="model.id">
-              {{ model.name || getModelDisplayName(model.id) }}
+              {{ model.name || model.id.split('/').pop() }}
             </option>
           </optgroup>
         </template>
-        <option v-else value="" disabled>Loading models...</option>
+        <template v-else>
+          <!-- Fallback options -->
+          <optgroup label="OpenAI">
+            <option value="openai/gpt-4o">GPT-4o</option>
+            <option value="openai/gpt-4">GPT-4</option>
+            <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
+          </optgroup>
+          <optgroup label="Anthropic">
+            <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
+            <option value="anthropic/claude-3-sonnet">Claude 3 Sonnet</option>
+            <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+          </optgroup>
+          <optgroup label="Local">
+            <option value="local/llama-3-70b">Llama 3 70B</option>
+            <option value="local/mixtral-8x7b">Mixtral 8x7B</option>
+          </optgroup>
+        </template>
       </select>
-      <svg class="w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none absolute right-2 top-1/2 transform -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-      </svg>
+      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-macos-gray-500">
+        <svg class="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+          <path
+            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+        </svg>
+      </div>
     </div>
 
-    <!-- Right-aligned content -->
-    <div class="absolute right-3 flex items-center gap-2">
-      <!-- Context Panel Toggle -->
-      <button @click="emit('update:isContextPanelOpen', !isContextPanelOpen)"
-        class="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-        :class="{ 'text-gray-700 dark:text-gray-300': isContextPanelOpen }">
-        <span class="sr-only">Toggle context panel</span>
-        <svg class="w-5 h-5 transition-transform duration-200" :class="{ 'rotate-180': isContextPanelOpen }" fill="none"
-          viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+    <!-- Right Aligned Content -->
+    <div class="ml-auto flex items-center space-x-2">
+      <!-- Toggle Context Panel -->
+      <button @click="$emit('update:isContextPanelOpen', !props.isContextPanelOpen)"
+        class="rounded-full p-1.5 hover:bg-macos-gray-100 dark:hover:bg-ayu-dark-line text-macos-gray-600 dark:text-ayu-dark-editor-fg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </button>
 
-      <!-- User Menu Button -->
-      <div class="relative ml-2">
-        <button @click.stop="showUserMenu = !showUserMenu"
-          class="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-          <!-- User Avatar -->
-          <span class="text-sm text-gray-700 dark:text-gray-300">
-            {{ user?.email || 'User' }}
-          </span>
-          <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
+      <!-- User Menu -->
+      <div class="relative user-menu">
+        <button @click="isUserMenuOpen = !isUserMenuOpen"
+          class="rounded-full w-6 h-6 bg-macos-blue dark:bg-ayu-dark-entity flex items-center justify-center text-white text-xs font-medium">
+          EF
         </button>
 
         <!-- User Menu Dropdown -->
-        <div v-if="showUserMenu"
-          class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+        <div v-if="isUserMenuOpen"
+          class="absolute right-0 mt-1 w-48 bg-white/80 dark:bg-ayu-dark-panel backdrop-blur-md rounded-md shadow-lg border border-macos-gray-200 dark:border-ayu-dark-line z-10">
           <div class="py-1">
-            <!-- User Info -->
-            <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ user?.email }}
-              </div>
-            </div>
-
-            <!-- Logout Button -->
-            <button @click="handleSignOut"
-              class="w-full px-4 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-              Sign out
-            </button>
+            <a href="#" @click.prevent="openSettings"
+              class="block px-4 py-2 text-sm text-macos-gray-700 dark:text-ayu-dark-editor-fg hover:bg-macos-gray-100 dark:hover:bg-ayu-dark-line">
+              Settings
+            </a>
+            <a href="#" @click.prevent="openApiKeys"
+              class="block px-4 py-2 text-sm text-macos-gray-700 dark:text-ayu-dark-editor-fg hover:bg-macos-gray-100 dark:hover:bg-ayu-dark-line">
+              API Keys
+            </a>
+            <a href="#" @click.prevent="handleSignOut"
+              class="block px-4 py-2 text-sm text-red-600 dark:text-ayu-dark-error hover:bg-macos-gray-100 dark:hover:bg-ayu-dark-line">
+              Logout
+            </a>
           </div>
         </div>
       </div>
     </div>
   </header>
 </template>
+
+<style scoped>
+.drag-handle {
+  -webkit-app-region: drag;
+}
+
+button,
+select,
+a {
+  -webkit-app-region: no-drag;
+}
+</style>
