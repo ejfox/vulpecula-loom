@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useActiveUser } from '../composables/useActiveUser'
+import type { OpenRouterModel } from '../types'
 
 const props = defineProps({
   modelName: {
@@ -26,13 +27,21 @@ const props = defineProps({
   isMobile: {
     type: Boolean,
     default: false
+  },
+  currentModel: {
+    type: String,
+    default: ''
+  },
+  availableModels: {
+    type: Array as () => OpenRouterModel[],
+    default: () => []
   }
 })
 
 const { user, signOut } = useActiveUser()
 const showUserMenu = ref(false)
 
-const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen'])
+const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen', 'set-model'])
 
 // Handle sign out
 const handleSignOut = async () => {
@@ -42,6 +51,35 @@ const handleSignOut = async () => {
   } catch (error) {
     console.error('Failed to sign out:', error)
   }
+}
+
+// Handle model change
+const handleModelChange = (event: Event) => {
+  const target = event.target as HTMLSelectElement
+  if (target) {
+    emit('set-model', target.value)
+  }
+}
+
+// Group models by provider
+const groupedModels = computed(() => {
+  const groups: Record<string, OpenRouterModel[]> = {}
+  
+  props.availableModels.forEach(model => {
+    const provider = model.id.split('/')[0]
+    if (!groups[provider]) {
+      groups[provider] = []
+    }
+    groups[provider].push(model)
+  })
+  
+  return groups
+})
+
+// Get model display name
+const getModelDisplayName = (modelId: string): string => {
+  const model = props.availableModels.find(m => m.id === modelId)
+  return model?.name || modelId.split('/').pop() || modelId
 }
 
 // Close menu when clicking outside
@@ -83,8 +121,26 @@ onMounted(() => {
     </div>
 
     <!-- Center-aligned content -->
-    <div class="flex items-center gap-2 text-xs">
-      <span class="text-gray-600 dark:text-gray-400">{{ modelName }}</span>
+    <div class="flex items-center gap-2 text-xs relative w-48">
+      <select :value="currentModel" @change="handleModelChange"
+        class="w-full py-1 px-3 pr-6 text-xs bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800
+               border border-gray-200 dark:border-gray-700 rounded-md
+               text-gray-600 dark:text-gray-400 
+               focus:outline-none focus:ring-1 focus:ring-blue-500
+               appearance-none cursor-pointer
+               transition-colors duration-150">
+        <template v-if="availableModels && availableModels.length > 0">
+          <optgroup v-for="(models, provider) in groupedModels" :key="provider" :label="provider.toUpperCase()">
+            <option v-for="model in models" :key="model.id" :value="model.id">
+              {{ model.name || getModelDisplayName(model.id) }}
+            </option>
+          </optgroup>
+        </template>
+        <option v-else value="" disabled>Loading models...</option>
+      </select>
+      <svg class="w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none absolute right-2 top-1/2 transform -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
     </div>
 
     <!-- Right-aligned content -->

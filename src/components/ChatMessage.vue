@@ -22,6 +22,15 @@ const formatTimeAgo = (date: string | undefined) => {
   if (!date) return ''
   return formatDistanceToNow(new Date(date), { addSuffix: true })
 }
+
+// Get the display name for the model from the full model ID
+const messageModelName = computed(() => {
+  if (props.message.role !== 'assistant' || !props.message.model) {
+    return props.modelName
+  }
+  // Extract the model name from the full model ID (e.g., "anthropic/claude-3-sonnet" -> "claude-3-sonnet")
+  return props.message.model.split('/').pop() || props.modelName
+})
 </script>
 
 <template>
@@ -42,7 +51,7 @@ const formatTimeAgo = (date: string | undefined) => {
       <!-- Role & Timestamp -->
       <div class="flex items-center gap-2">
         <span class="text-sm font-medium dark:text-white/90">
-          {{ message.role === 'assistant' ? modelName : 'You' }}
+          {{ message.role === 'assistant' ? messageModelName : 'You' }}
         </span>
         <span class="text-xs dark:text-white/40">
           {{ formatTimeAgo(message.timestamp) }}

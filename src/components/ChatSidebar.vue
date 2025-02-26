@@ -52,8 +52,6 @@
                   class="absolute -left-0.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-500/40">
                 </div>
 
-
-
                 <!-- Chat Info -->
                 <div class="flex-1 min-w-0 ml-0.5 overflow-hidden">
                   <div class="flex items-center gap-0.5">
@@ -142,27 +140,12 @@
         </div>
       </div>
     </div>
-
-    <!-- Model Selector -->
-    <div class="flex-shrink-0 p-4 bg-gray-100 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-      <select :value="currentModel" @change="handleModelChange"
-        class="w-full p-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-        <template v-if="availableModels">
-          <optgroup v-for="(models, provider) in groupedModels" :key="provider" :label="provider.toUpperCase()">
-            <option v-for="model in models" :key="model.id" :value="model.id">
-              {{ model.name || getModelDisplayName(model.id) }}
-            </option>
-          </optgroup>
-        </template>
-        <option v-else value="" disabled>Loading models...</option>
-      </select>
-    </div>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { Chat, OpenRouterModel } from '../types'
+import type { Chat } from '../types'
 import { useStore } from '../lib/store'
 import logger from '../lib/logger'
 import ChatImport from './ChatImport.vue'
@@ -171,28 +154,9 @@ import { formatDistanceToNow } from 'date-fns'
 const props = defineProps<{
   chatHistory: Chat[]
   currentChatId: string | null
-  currentModel: string
-  availableModels: OpenRouterModel[]
-  showOnlyPinnedModels?: boolean
 }>()
 
-const emit = defineEmits(['new-chat', 'load-chat', 'set-model', 'delete-chat'])
-
-// Add local ref for model selection
-const selectedModel = ref(props.currentModel)
-
-// Watch for prop changes
-watch(() => props.currentModel, (newValue) => {
-  selectedModel.value = newValue
-})
-
-// Handle model change
-const handleModelChange = (event: Event) => {
-  const target = event.target as HTMLSelectElement
-  if (target) {
-    emit('set-model', target.value)
-  }
-}
+const emit = defineEmits(['new-chat', 'load-chat', 'delete-chat'])
 
 // Group chats by thread
 const groupedChats = computed(() => {
@@ -246,11 +210,6 @@ const formatDate = (date: string) => {
 
 // Update the model display names
 const getModelDisplayName = (modelId: string): string => {
-  if (!props.availableModels) return modelId
-
-  const model = props.availableModels.find(m => m.id === modelId)
-  if (model?.name) return model.name
-
   const modelName = modelId.split('/').pop() || ''
   return modelName.split('-')
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
@@ -297,56 +256,6 @@ onMounted(() => {
 })
 
 const store = useStore()
-
-// Add state for pinned model IDs
-const pinnedModelIds = ref<string[]>([])
-
-// Watch for changes in pinned models
-watch(pinnedModelIds, async (newIds) => {
-  logger.debug('Pinned models updated', { count: newIds.length })
-  await loadPinnedModels()
-})
-
-const loadPinnedModels = async () => {
-  try {
-    const stored = await store.get('pinned-models')
-    pinnedModelIds.value = stored ?? []
-  } catch (err) {
-    logger.error('Failed to load pinned models', err)
-  }
-}
-
-// Group and filter models
-const filteredModels = computed(() => {
-  if (!props.availableModels) return []
-
-  if (props.showOnlyPinnedModels) {
-    return props.availableModels.filter(model =>
-      pinnedModelIds.value?.includes(model.id)
-    )
-  }
-
-  return props.availableModels
-})
-
-// Group models by provider
-const groupedModels = computed(() => {
-  if (!props.availableModels) return {}
-
-  // Filter models based on pinned status if needed
-  const models = props.showOnlyPinnedModels
-    ? props.availableModels.filter(model => pinnedModelIds.value.includes(model.id))
-    : props.availableModels
-
-  return models.reduce((groups: Record<string, OpenRouterModel[]>, model) => {
-    const [provider] = model.id.split('/')
-    if (!groups[provider]) {
-      groups[provider] = []
-    }
-    groups[provider].push(model)
-    return groups
-  }, {})
-})
 
 // Add helper function for chat age
 const formatChatAge = (date: string | undefined) => {

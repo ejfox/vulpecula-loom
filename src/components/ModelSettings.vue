@@ -9,65 +9,232 @@
         <span class="text-xs text-gray-500 dark:text-gray-400">{{ pinnedModels.length }}/9 pinned</span>
       </div>
 
-      <!-- Column Headers -->
-      <div class="flex items-center gap-3 px-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-        <div class="w-5"></div> <!-- Icon space -->
-        <div class="w-48">Model</div>
-        <div class="w-20">Context</div>
-        <div class="w-40">Price (in/out)</div>
-        <div class="w-24">Features</div>
-      </div>
-
-      <!-- Pinned Models List -->
-      <div class="space-y-2">
-        <div v-for="model in pinnedModels" :key="model.id"
-          class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
-          <div class="flex items-center gap-3 flex-1 min-w-0">
-            <div class="w-5 h-5 flex-shrink-0">
-              <div :class="getProviderIcon(model.id)" class="w-5 h-5" />
-            </div>
-            <span :class="[getModelColor(model.id), 'font-medium text-sm flex-shrink-0 w-48']">
-              {{ model.name || getModelDisplayName(model.id) }}
-            </span>
-            <span v-if="model.context_length"
-              class="text-xs text-gray-500 dark:text-gray-400 font-mono w-20 flex-shrink-0">
-              {{ formatContextLength(model.context_length) }}
-            </span>
-            <span class="text-xs font-mono flex-shrink-0 w-32 whitespace-pre leading-tight" :class="[
-              model.pricing?.prompt === '0' && model.pricing?.completion === '0'
-                ? 'text-green-600 dark:text-green-400 font-medium'
-                : 'text-gray-500 dark:text-gray-400'
-            ]">
-              {{ formatModelCost(model.pricing) }}
-            </span>
-            <div class="flex items-center gap-1 w-24 flex-shrink-0">
-              <span v-if="model.capabilities?.vision" 
-                class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                Vision
-              </span>
-            </div>
-          </div>
-          <button @click="unpinModel(model.id)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-            <span class="sr-only">Unpin model</span>
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+      <!-- Model Comparison Section (shows when 2 models are selected) -->
+      <div v-if="comparisonModels.length === 2" class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mb-4">
+        <div class="flex justify-between items-center mb-3">
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Model Comparison</h4>
+          <button @click="clearComparison" class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-300">
+            Clear Comparison
           </button>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div v-for="model in comparisonModels" :key="model.id" class="relative">
+            <ModelMetadata :model="model" :compact="false" />
+          </div>
+        </div>
+        
+        <!-- Comparison Table -->
+        <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                <th class="pb-2">Feature</th>
+                <th class="pb-2">{{ getModelDisplayName(comparisonModels[0].id) }}</th>
+                <th class="pb-2">{{ getModelDisplayName(comparisonModels[1].id) }}</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <!-- Context Length -->
+              <tr>
+                <td class="py-1.5 font-medium">Context Length</td>
+                <td class="py-1.5">{{ formatContextLength(comparisonModels[0].context_length) }}</td>
+                <td class="py-1.5">{{ formatContextLength(comparisonModels[1].context_length) }}</td>
+              </tr>
+              <!-- Input Cost -->
+              <tr>
+                <td class="py-1.5 font-medium">Input Cost</td>
+                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[0].pricing?.prompt) }">
+                  {{ formatSinglePrice(comparisonModels[0].pricing?.prompt) }}
+                </td>
+                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[1].pricing?.prompt) }">
+                  {{ formatSinglePrice(comparisonModels[1].pricing?.prompt) }}
+                </td>
+              </tr>
+              <!-- Output Cost -->
+              <tr>
+                <td class="py-1.5 font-medium">Output Cost</td>
+                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[0].pricing?.completion) }">
+                  {{ formatSinglePrice(comparisonModels[0].pricing?.completion) }}
+                </td>
+                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[1].pricing?.completion) }">
+                  {{ formatSinglePrice(comparisonModels[1].pricing?.completion) }}
+                </td>
+              </tr>
+              <!-- Vision Support -->
+              <tr>
+                <td class="py-1.5 font-medium">Vision Support</td>
+                <td class="py-1.5">
+                  <span v-if="comparisonModels[0].capabilities?.vision" class="text-green-600 dark:text-green-400">
+                    <i class="i-carbon-checkmark mr-1"></i> Yes
+                  </span>
+                  <span v-else class="text-red-600 dark:text-red-400">
+                    <i class="i-carbon-close mr-1"></i> No
+                  </span>
+                </td>
+                <td class="py-1.5">
+                  <span v-if="comparisonModels[1].capabilities?.vision" class="text-green-600 dark:text-green-400">
+                    <i class="i-carbon-checkmark mr-1"></i> Yes
+                  </span>
+                  <span v-else class="text-red-600 dark:text-red-400">
+                    <i class="i-carbon-close mr-1"></i> No
+                  </span>
+                </td>
+              </tr>
+              <!-- Tools Support -->
+              <tr>
+                <td class="py-1.5 font-medium">Tools Support</td>
+                <td class="py-1.5">
+                  <span v-if="comparisonModels[0].capabilities?.tools" class="text-green-600 dark:text-green-400">
+                    <i class="i-carbon-checkmark mr-1"></i> Yes
+                  </span>
+                  <span v-else class="text-red-600 dark:text-red-400">
+                    <i class="i-carbon-close mr-1"></i> No
+                  </span>
+                </td>
+                <td class="py-1.5">
+                  <span v-if="comparisonModels[1].capabilities?.tools" class="text-green-600 dark:text-green-400">
+                    <i class="i-carbon-checkmark mr-1"></i> Yes
+                  </span>
+                  <span v-else class="text-red-600 dark:text-red-400">
+                    <i class="i-carbon-close mr-1"></i> No
+                  </span>
+                </td>
+              </tr>
+              <!-- Function Calling -->
+              <tr>
+                <td class="py-1.5 font-medium">Function Calling</td>
+                <td class="py-1.5">
+                  <span v-if="comparisonModels[0].capabilities?.function_calling" class="text-green-600 dark:text-green-400">
+                    <i class="i-carbon-checkmark mr-1"></i> Yes
+                  </span>
+                  <span v-else class="text-red-600 dark:text-red-400">
+                    <i class="i-carbon-close mr-1"></i> No
+                  </span>
+                </td>
+                <td class="py-1.5">
+                  <span v-if="comparisonModels[1].capabilities?.function_calling" class="text-green-600 dark:text-green-400">
+                    <i class="i-carbon-checkmark mr-1"></i> Yes
+                  </span>
+                  <span v-else class="text-red-600 dark:text-red-400">
+                    <i class="i-carbon-close mr-1"></i> No
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Search and Sort Controls -->
-      <div class="mt-6 space-y-3">
-        <!-- Search Bar -->
+      <!-- Pinned Models Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div v-for="model in pinnedModels" :key="model.id" class="relative">
+          <ModelMetadata :model="model" :compact="true" />
+          <div class="absolute top-2 right-2 flex gap-1">
+            <!-- Compare Button -->
+            <button @click="toggleModelComparison(model)" 
+              :class="[
+                'p-1 rounded-full transition-colors',
+                isModelInComparison(model.id)
+                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                  : 'bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+              ]"
+              :disabled="comparisonModels.length >= 2 && !isModelInComparison(model.id)">
+              <span class="sr-only">Compare model</span>
+              <i class="i-carbon-compare w-4 h-4" />
+            </button>
+            
+            <!-- Unpin Button -->
+            <button @click="unpinModel(model.id)" 
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-white dark:bg-gray-800 rounded-full">
+              <span class="sr-only">Unpin model</span>
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enhanced Search and Filter Controls -->
+      <div class="mt-6 space-y-4">
+        <!-- Quick Comparison Tip -->
+        <div v-if="comparisonModels.length === 0 || comparisonModels.length === 1" 
+             class="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center">
+          <i class="i-carbon-compare mr-2 w-4 h-4"></i>
+          <span>
+            <strong>Quick Compare:</strong> 
+            {{ comparisonModels.length === 0 
+              ? 'Click the compare icon on any two models to see them side by side' 
+              : 'Select one more model to compare with ' + getModelDisplayName(comparisonModels[0].id) }}
+          </span>
+        </div>
+
+        <!-- Search Bar with Fuzzy Search Indicator -->
         <div class="relative">
-          <input v-model="searchQuery" type="text" placeholder="Search models..." class="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg 
-                   focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" />
-          <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
+          <input v-model="searchQuery" type="text" placeholder="Search models by name, provider, or features..." 
+                 class="w-full pl-10 pr-12 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg 
+                 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" />
+          <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+            <span v-if="searchQuery" class="text-xs text-blue-500 dark:text-blue-400 font-medium">
+              Fuzzy Search
+            </span>
+          </div>
+        </div>
+
+        <!-- Filter Tags -->
+        <div class="flex flex-wrap gap-2">
+          <button @click="toggleFilter('vision')" 
+                  :class="[
+                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
+                    activeFilters.includes('vision') 
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' 
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  ]">
+            <i class="i-carbon-camera mr-1 w-3 h-3"></i>
+            Vision
+          </button>
+          <button @click="toggleFilter('tools')" 
+                  :class="[
+                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
+                    activeFilters.includes('tools') 
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  ]">
+            <i class="i-carbon-tools mr-1 w-3 h-3"></i>
+            Tools
+          </button>
+          <button @click="toggleFilter('function_calling')" 
+                  :class="[
+                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
+                    activeFilters.includes('function_calling') 
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  ]">
+            <i class="i-carbon-function mr-1 w-3 h-3"></i>
+            Function Calling
+          </button>
+          <button @click="toggleFilter('free')" 
+                  :class="[
+                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
+                    activeFilters.includes('free') 
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  ]">
+            <i class="i-carbon-currency-dollar mr-1 w-3 h-3"></i>
+            Free
+          </button>
+          <button v-if="activeFilters.length > 0" @click="clearFilters" 
+                  class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+            <i class="i-carbon-close mr-1 w-3 h-3"></i>
+            Clear Filters
+          </button>
         </div>
 
         <!-- Sort Controls -->
@@ -91,83 +258,58 @@
         </div>
       </div>
 
+      <!-- Search Results Stats -->
+      <div v-if="searchQuery || activeFilters.length > 0" class="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-2">
+        <span>{{ filteredModelsCount }} models found</span>
+        <span v-if="searchQuery">Searching for "{{ searchQuery }}"</span>
+      </div>
+
       <!-- Available Models Section -->
       <div class="space-y-4">
-        <!-- Sticky Headers -->
-        <div class="sticky top-0 bg-white dark:bg-gray-950 pt-4 pb-2 z-10">
-          <!-- Provider Label -->
-          <div class="flex items-center gap-3 px-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-            <div class="w-5"></div> <!-- Icon space -->
-            <div class="w-48">Model</div>
-            <div class="w-20">Context</div>
-            <div class="w-40">Price (in/out)</div>
-            <div class="w-24">Features</div>
-          </div>
-        </div>
-
         <!-- Model Groups -->
-        <div v-for="(models, provider) in sortedGroupedModels" :key="provider">
-          <h5 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+        <div v-for="(models, provider) in sortedGroupedModels" :key="provider" class="space-y-3">
+          <h5 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center">
             {{ provider }}
+            <span class="ml-2 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">
+              {{ models.length }}
+            </span>
           </h5>
-          <div class="space-y-1">
-            <div v-for="model in models" :key="model.id"
-              class="flex items-center justify-between p-2 hover:bg-gray-50 dark:hover:bg-gray-900 rounded-lg">
-              <!-- Model Info - Left Side -->
-              <div class="flex items-center gap-3 flex-1 min-w-0">
-                <!-- Provider Icon -->
-                <div class="w-5 h-5 flex-shrink-0">
-                  <div :class="getProviderIcon(model.id)" class="w-5 h-5" />
-                </div>
-
-                <!-- Model Name -->
-                <span :class="[getModelColor(model.id), 'font-medium text-sm flex-shrink-0 w-48']">
-                  {{ model.name || getModelDisplayName(model.id) }}
-                </span>
-
-                <!-- Context Length -->
-                <span v-if="model.context_length"
-                  class="text-xs text-gray-500 dark:text-gray-400 font-mono w-20 flex-shrink-0">
-                  {{ formatContextLength(model.context_length) }}
-                </span>
-
-                <!-- Pricing -->
-                <span class="text-xs font-mono flex-shrink-0 w-32 whitespace-pre leading-tight" :class="[
-                  model.pricing?.prompt === '0' && model.pricing?.completion === '0'
-                    ? 'text-green-600 dark:text-green-400 font-medium'
-                    : 'text-gray-500 dark:text-gray-400'
-                ]">
-                  {{ formatModelCost(model.pricing) }}
-                </span>
-
-                <!-- Features -->
-                <div class="flex items-center gap-1 w-24 flex-shrink-0">
-                  <span v-if="model.capabilities?.vision" 
-                    class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                    Vision
-                  </span>
-                </div>
-              </div>
-
-              <!-- Actions - Right Side -->
-              <div class="flex items-center gap-2">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div v-for="model in models" :key="model.id" class="relative">
+              <ModelMetadata :model="model" :compact="true" />
+              
+              <!-- Action Buttons -->
+              <div class="absolute top-2 right-2 flex gap-1">
+                <!-- Compare Button -->
+                <button @click="toggleModelComparison(model)" 
+                  :class="[
+                    'p-1 rounded-full transition-colors',
+                    isModelInComparison(model.id)
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                      : 'bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                  ]"
+                  :disabled="comparisonModels.length >= 2 && !isModelInComparison(model.id)">
+                  <span class="sr-only">Compare model</span>
+                  <i class="i-carbon-compare w-4 h-4" />
+                </button>
+                
                 <!-- Vision Model Toggle -->
                 <button v-if="model.capabilities?.vision"
                   @click="setPreferredVisionModel(model.id)"
                   :class="[
-                    'text-xs px-2 py-1 rounded-md transition-colors',
+                    'p-1 rounded-full transition-colors',
                     preferredVisionModel === model.id
                       ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      : 'bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                   ]"
                   :title="preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model'">
                   <span class="sr-only">{{ preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model' }}</span>
-                  <i class="i-carbon-camera" />
+                  <i class="i-carbon-camera w-4 h-4" />
                 </button>
 
                 <!-- Pin Button -->
                 <button @click="pinModel(model.id)" :disabled="pinnedModels.length >= 9"
-                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 flex-shrink-0"
+                  class="p-1 bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 rounded-full"
                   :title="pinnedModels.length >= 9 ? 'Maximum 9 models can be pinned' : 'Pin model'">
                   <span class="sr-only">Pin model</span>
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,6 +332,7 @@ import type { OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import Fuse from 'fuse.js'
 import logger from '../lib/logger'
+import ModelMetadata from './ModelMetadata.vue'
 
 const store = useStore()
 
@@ -209,6 +352,8 @@ const searchQuery = ref('')
 const sortBy = ref<'name' | 'promptCost' | 'completionCost' | 'totalCost' | 'contextLength'>('name')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 const preferredVisionModel = ref('')
+const activeFilters = ref<string[]>([])
+const comparisonModels = ref<OpenRouterModel[]>([])
 
 // Initialize pinned models
 const initializePinnedModels = async () => {
@@ -255,6 +400,20 @@ const unpinModel = async (modelId: string) => {
   pinnedModels.value = pinnedModels.value.filter(model => model.id !== modelId);
 };
 
+// Toggle filter function
+const toggleFilter = (filter: string) => {
+  if (activeFilters.value.includes(filter)) {
+    activeFilters.value = activeFilters.value.filter(f => f !== filter)
+  } else {
+    activeFilters.value.push(filter)
+  }
+}
+
+// Clear all filters
+const clearFilters = () => {
+  activeFilters.value = []
+}
+
 // Get unpinned models
 const unpinnedModels = computed(() => {
   return props.availableModels.filter(
@@ -262,9 +421,36 @@ const unpinnedModels = computed(() => {
   )
 })
 
+// Apply filters to models
+const applyFilters = (models: OpenRouterModel[]) => {
+  if (activeFilters.value.length === 0) return models
+  
+  return models.filter(model => {
+    // Check for capability filters
+    const hasVision = activeFilters.value.includes('vision') ? model.capabilities?.vision : true
+    const hasTools = activeFilters.value.includes('tools') ? model.capabilities?.tools : true
+    const hasFunctionCalling = activeFilters.value.includes('function_calling') ? model.capabilities?.function_calling : true
+    
+    // Check for free models
+    const isFree = activeFilters.value.includes('free') 
+      ? (model.pricing && (parseFloat(model.pricing.prompt) === 0 || parseFloat(model.pricing.completion) === 0))
+      : true
+    
+    return (
+      (!activeFilters.value.includes('vision') || hasVision) &&
+      (!activeFilters.value.includes('tools') || hasTools) &&
+      (!activeFilters.value.includes('function_calling') || hasFunctionCalling) &&
+      (!activeFilters.value.includes('free') || isFree)
+    )
+  })
+}
+
 // Sort and filter models
 const filteredModels = computed(() => {
   let models = [...unpinnedModels.value]
+  
+  // Apply filters
+  models = applyFilters(models)
   
   // Apply search filter if there's a query
   if (searchQuery.value.trim()) {
@@ -296,6 +482,11 @@ const filteredModels = computed(() => {
   return models
 })
 
+// Count of filtered models for stats display
+const filteredModelsCount = computed(() => {
+  return Object.values(sortedGroupedModels.value).reduce((acc, models) => acc + models.length, 0)
+})
+
 // Group models by provider
 const sortedGroupedModels = computed(() => {
   const models = filteredModels.value
@@ -309,13 +500,6 @@ const sortedGroupedModels = computed(() => {
   
   return grouped
 })
-
-// Fuzzy search configuration
-const fuseOptions = {
-  keys: ['id', 'name', 'description'],
-  threshold: 0.4,
-  includeScore: true
-}
 
 // Sorting functions
 const getSortValue = (model: OpenRouterModel) => {
@@ -345,88 +529,6 @@ const getModelDisplayName = (modelId: string): string => {
   return modelName.split('-')
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
-}
-
-const getModelColor = (modelId: string): string => {
-  if (modelId.includes('claude-3')) return 'text-violet-600 dark:text-violet-400'
-  if (modelId.includes('claude')) return 'text-purple-600 dark:text-purple-400'
-  if (modelId.includes('gpt-4')) return 'text-emerald-600 dark:text-emerald-400'
-  if (modelId.includes('gpt-3')) return 'text-blue-600 dark:text-blue-400'
-  if (modelId.includes('gemini')) return 'text-amber-600 dark:text-amber-400'
-  if (modelId.includes('llama')) return 'text-orange-600 dark:text-orange-400'
-  if (modelId.includes('mistral')) return 'text-cyan-600 dark:text-cyan-400'
-  return 'text-gray-600 dark:text-gray-400'
-}
-
-const formatModelCost = (pricing?: { prompt: string; completion: string }): string => {
-  if (!pricing) return ''
-
-  const promptCost = parseFloat(pricing.prompt)
-  const completionCost = parseFloat(pricing.completion)
-
-  if (isNaN(promptCost) || isNaN(completionCost)) return ''
-
-  // If both costs are 0, show as FREE
-  if (promptCost === 0 && completionCost === 0) {
-    return 'FREE'
-  }
-
-  // Helper to format individual costs
-  const formatCost = (cost: number): string => {
-    if (cost === 0) return 'FREE'
-
-    // For costs that are $0.01 or more per token
-    if (cost >= 0.01) {
-      return `$${cost.toFixed(2)}/tok`
-    }
-
-    // For costs around a penny or less, show in cents per token
-    if (cost >= 0.0001) {
-      return `${(cost * 100).toFixed(1)}¢/tok`
-    }
-
-    // For smaller costs, show in cents per KTok
-    const perKTok = cost * 1000 * 100 // Convert to cents per 1000 tokens
-    return `${perKTok.toFixed(1)}¢/KTok`
-  }
-
-  const promptFormatted = formatCost(promptCost)
-  const completionFormatted = formatCost(completionCost)
-
-  // If both costs are the same, show just one number
-  if (promptFormatted === completionFormatted) {
-    return promptFormatted
-  }
-
-  return `${promptFormatted}\n${completionFormatted}`
-}
-
-const formatContextLength = (length: number): string => {
-  if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M ctx`
-  if (length >= 1000) return `${(length / 1000).toFixed(0)}K ctx`
-  return `${length} ctx`
-}
-
-const getProviderIcon = (modelId: string): string => {
-  const [provider] = modelId.split('/')
-  switch (provider.toLowerCase()) {
-    case 'anthropic':
-      return 'i-simple-icons-anthropic'
-    case 'openai':
-      return 'i-simple-icons-openai'
-    case 'google':
-      return 'i-simple-icons-google'
-    case 'meta':
-      return 'i-simple-icons-meta'
-    case 'amazon':
-      return 'i-simple-icons-amazon'
-    case 'huggingface':
-      return 'i-simple-icons-huggingface'
-    case 'microsoft':
-      return 'i-simple-icons-microsoft'
-    default:
-      return 'i-carbon-machine-learning-model'
-  }
 }
 
 // Initialize on mount
@@ -472,4 +574,78 @@ const setPreferredVisionModel = async (modelId: string) => {
     logger.error('Failed to set preferred vision model', err);
   }
 };
+
+// Fuzzy search configuration
+const fuseOptions = {
+  keys: ['id', 'name', 'description'],
+  threshold: 0.4,
+  includeScore: true,
+  // Add more weight to name matches
+  fieldNormWeight: 2.0
+}
+
+// Model comparison functions
+const toggleModelComparison = (model: OpenRouterModel) => {
+  const index = comparisonModels.value.findIndex(m => m.id === model.id)
+  
+  if (index >= 0) {
+    // Remove from comparison
+    comparisonModels.value.splice(index, 1)
+  } else if (comparisonModels.value.length < 2) {
+    // Add to comparison
+    comparisonModels.value.push(model)
+  }
+}
+
+const isModelInComparison = (modelId: string): boolean => {
+  return comparisonModels.value.some(model => model.id === modelId)
+}
+
+const clearComparison = () => {
+  comparisonModels.value = []
+}
+
+// Helper functions for comparison
+const formatContextLength = (length: number): string => {
+  if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`;
+  if (length >= 1000) return `${(length / 1000).toFixed(0)}K`;
+  return `${length}`;
+}
+
+const isPricingFree = (price?: string): boolean => {
+  if (!price) return false;
+  const numPrice = parseFloat(price);
+  return numPrice === 0;
+}
+
+const formatSinglePrice = (price?: string): string => {
+  if (!price) return '-';
+  
+  const numPrice = parseFloat(price);
+  
+  if (isNaN(numPrice)) return '-';
+  
+  // If price is 0, show as FREE
+  if (numPrice === 0) {
+    return 'FREE';
+  }
+  
+  // For costs that are $0.01 or more per token
+  if (numPrice >= 0.01) {
+    return `$${numPrice.toFixed(2)}/tok`;
+  }
+  
+  // For costs around a penny or less, show in cents per token
+  if (numPrice >= 0.0001) {
+    return `${(numPrice * 100).toFixed(1)}¢/tok`;
+  }
+  
+  // For smaller costs, show in cents per thousand tokens
+  if (numPrice >= 0.0000001) {
+    return `${(numPrice * 100000).toFixed(1)}¢/KTok`;
+  }
+  
+  // For tiny costs, show in cents per million tokens
+  return `${(numPrice * 100000000).toFixed(1)}¢/MTok`;
+}
 </script>

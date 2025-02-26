@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed, onUnmounted } from 'vue'
 import type { OpenRouterModel } from '../types'
 import { useStore } from '../lib/store'
 import { useOpenRouter } from '../composables/useOpenRouter'
 import ModelSettings from './ModelSettings.vue'
 import { useActiveUser } from '../composables/useActiveUser'
+import Fuse from 'fuse.js'
 
 // Add this near the top of the script section
 const { shell, ipc } = window.electron || {}
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   'update:showProgressBar': [value: boolean]
   'validate-api-key': [key: string]
   'update:showOnlyPinnedModels': [value: boolean]
+  'select-model': [modelId: string]
 }>()
 
 const store = useStore()
@@ -129,10 +131,48 @@ onMounted(async () => {
   try {
     const showOnlyPinnedModels = await store.get('show-only-pinned-models')
     preferences.value.showOnlyPinnedModels = Boolean(showOnlyPinnedModels)
+    
+    // Add keyboard shortcut listener
+    window.addEventListener('keydown', handleKeyboardShortcuts)
   } catch (err) {
     console.error('Failed to load preferences:', err)
   }
 })
+
+// Clean up event listeners
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyboardShortcuts)
+})
+
+// Handle keyboard shortcuts
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+const handleKeyboardShortcuts = (event: KeyboardEvent) => {
+  // Ctrl+, (or Cmd+, on Mac) to focus search
+  if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+    event.preventDefault()
+    
+    // If modal is not open, open it
+    if (!props.modelValue) {
+      emit('update:modelValue', true)
+      
+      // Need to wait for the modal to render
+      setTimeout(() => {
+        focusSearchInput()
+      }, 100)
+    } else {
+      focusSearchInput()
+    }
+  }
+}
+
+const focusSearchInput = () => {
+  // Find the search input and focus it
+  const searchInput = document.querySelector('.settings-global-search') as HTMLInputElement
+  if (searchInput) {
+    searchInput.focus()
+  }
+}
 
 // Save preferences when they change
 watch(() => preferences.value.showOnlyPinnedModels, async (newValue) => {
@@ -214,6 +254,134 @@ const handleSignOut = async () => {
     error.value = 'Failed to sign out'
   }
 }
+
+// Global model search
+const globalModelSearch = ref('')
+const globalSearchResults = ref<OpenRouterModel[]>([])
+
+// Fuzzy search configuration
+const fuseOptions = {
+  keys: ['id', 'name', 'description'],
+  threshold: 0.4,
+  includeScore: true,
+  fieldNormWeight: 2.0
+}
+
+// Watch for changes in the global search query
+watch(globalModelSearch, (query) => {
+  if (!query.trim()) {
+    globalSearchResults.value = []
+    return
+  }
+  
+  const fuse = new Fuse(props.availableModels, fuseOptions)
+  const results = fuse.search(query)
+  
+  // Limit to top 10 results for performance
+  globalSearchResults.value = results.slice(0, 10).map(result => result.item)
+})
+
+// Handle keyboard shortcut focus
+const handleGlobalSearchFocus = () => {
+  // Switch to models tab when focusing on search
+  if (currentTab.value !== 'models') {
+    currentTab.value = 'models'
+  }
+}
+
+// Handle enter key in search
+const handleGlobalSearchEnter = () => {
+  // Select the first result when pressing enter
+  if (globalSearchResults.value.length > 0) {
+    selectModelFromSearch(globalSearchResults.value[0])
+  }
+}
+
+// Select a model from search results
+const selectModelFromSearch = (model: OpenRouterModel) => {
+  // Emit event to select this model in the parent component
+  emit('select-model', model.id)
+  
+  // Clear search and close modal
+  globalModelSearch.value = ''
+  globalSearchResults.value = []
+  
+  // Optional: close the settings modal
+  emit('update:modelValue', false)
+}
+
+// Helper functions for displaying model information
+const getModelColor = (modelId: string): string => {
+  if (modelId.includes('claude-3')) return 'text-violet-600 dark:text-violet-400'
+  if (modelId.includes('claude')) return 'text-purple-600 dark:text-purple-400'
+  if (modelId.includes('gpt-4')) return 'text-emerald-600 dark:text-emerald-400'
+  if (modelId.includes('gpt-3')) return 'text-blue-600 dark:text-blue-400'
+  if (modelId.includes('gemini')) return 'text-amber-600 dark:text-amber-400'
+  if (modelId.includes('llama')) return 'text-orange-600 dark:text-orange-400'
+  if (modelId.includes('mistral')) return 'text-cyan-600 dark:text-cyan-400'
+  return 'text-gray-600 dark:text-gray-400'
+}
+
+const getModelDisplayName = (modelId: string): string => {
+  const model = props.availableModels.find(m => m.id === modelId)
+  if (model?.name) return model.name
+
+  const modelName = modelId.split('/').pop() || ''
+  return modelName.split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const getProviderName = (modelId: string): string => {
+  const [provider] = modelId.split('/')
+  return provider.charAt(0).toUpperCase() + provider.slice(1)
+}
+
+const formatContextLength = (length: number): string => {
+  if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`
+  if (length >= 1000) return `${(length / 1000).toFixed(0)}K`
+  return `${length}`
+}
+
+// Check if pricing is free
+const isPricingFree = (price?: string): boolean => {
+  if (!price) return false
+  const numPrice = parseFloat(price)
+  return numPrice === 0
+}
+
+// Format pricing for display
+const formatPrice = (pricing: { prompt: string, completion: string }): string => {
+  if (!pricing) return '-'
+  
+  const promptPrice = parseFloat(pricing.prompt)
+  const completionPrice = parseFloat(pricing.completion)
+  
+  if (isNaN(promptPrice) || isNaN(completionPrice)) return '-'
+  
+  // If both prices are 0, show as FREE
+  if (promptPrice === 0 && completionPrice === 0) {
+    return 'FREE'
+  }
+  
+  // Show completion price as it's usually what users care about most
+  if (completionPrice === 0) {
+    return 'FREE output'
+  }
+  
+  // For costs that are $0.01 or more per token
+  if (completionPrice >= 0.01) {
+    return `$${completionPrice.toFixed(2)}/tok`
+  }
+  
+  // For costs around a penny or less, show in cents per token
+  if (completionPrice >= 0.0001) {
+    return `${(completionPrice * 100).toFixed(1)}¢/tok`
+  }
+  
+  // For smaller costs, show in cents per thousand tokens
+  return `${(completionPrice * 100000).toFixed(1)}¢/KTok`
+}
 </script>
 
 <template>
@@ -230,6 +398,86 @@ const handleSignOut = async () => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+
+        <!-- Global Model Search -->
+        <div v-if="availableModels.length > 0" class="mb-4">
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" 
+                   :class="{ 'text-blue-500 dark:text-blue-400': globalModelSearch }"
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input v-model="globalModelSearch" 
+                   type="text" 
+                   placeholder="Quick search any model (e.g., 'claude', 'gpt-4', 'deepseek')..." 
+                   class="settings-global-search w-full pl-10 pr-12 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg 
+                   focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
+                   :class="{ 'border-blue-500 dark:border-blue-400 shadow-sm shadow-blue-500/20': globalModelSearch }" 
+                   @focus="handleGlobalSearchFocus"
+                   @keydown.enter="handleGlobalSearchEnter" />
+            <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+              <span v-if="globalModelSearch" class="text-xs text-blue-500 dark:text-blue-400 font-medium">
+                Fuzzy Search
+              </span>
+              <kbd v-else class="hidden sm:inline-flex items-center px-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded dark:bg-gray-600 dark:text-gray-100 dark:border-gray-500">
+                Ctrl+,
+              </kbd>
+            </div>
+          </div>
+          
+          <!-- Quick Search Results -->
+          <div v-if="globalModelSearch && globalSearchResults.length > 0" 
+               class="absolute z-50 mt-1 w-[calc(100%-3rem)] max-h-80 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 animate-fadeIn">
+            <div class="p-2">
+              <div v-for="(model, index) in globalSearchResults" :key="model.id" 
+                   class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md cursor-pointer transition-colors duration-150"
+                   :class="{ 'bg-gray-50 dark:bg-gray-750': index % 2 === 0 }"
+                   @click="selectModelFromSearch(model)">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="font-medium" :class="getModelColor(model.id)">
+                      {{ model.name || getModelDisplayName(model.id) }}
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                      <span class="font-medium">{{ getProviderName(model.id) }}</span>
+                      <span class="mx-1">•</span>
+                      <span>{{ formatContextLength(model.context_length) }} context</span>
+                      <span v-if="model.pricing" class="mx-1">•</span>
+                      <span v-if="model.pricing" :class="{ 'text-green-500 dark:text-green-400': isPricingFree(model.pricing.completion) }">
+                        {{ formatPrice(model.pricing) }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex items-center space-x-1">
+                    <span v-if="model.capabilities?.vision" 
+                          class="p-1 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200"
+                          title="Vision support">
+                      <i class="i-carbon-camera w-3 h-3" />
+                    </span>
+                    <span v-if="model.capabilities?.tools" 
+                          class="p-1 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                          title="Tools support">
+                      <i class="i-carbon-tools w-3 h-3" />
+                    </span>
+                    <span v-if="model.capabilities?.function_calling" 
+                          class="p-1 rounded-full bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
+                          title="Function calling support">
+                      <i class="i-carbon-function w-3 h-3" />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- No Results Message -->
+            <div v-if="globalSearchResults.length === 0 && globalModelSearch" class="p-4 text-center text-gray-500 dark:text-gray-400">
+              No models found matching "<span class="font-medium">{{ globalModelSearch }}</span>"
+            </div>
+          </div>
         </div>
 
         <!-- Tabs -->
@@ -383,9 +631,27 @@ const handleSignOut = async () => {
               </div>
             </div>
 
-            <div class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              {{ availableModels.length }} models available
+            <!-- Model Comparison Guide -->
+            <div class="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-4 text-sm">
+              <h4 class="font-medium text-amber-700 dark:text-amber-300 mb-2">Model Comparison Guide</h4>
+              <div class="space-y-2 text-amber-600 dark:text-amber-400">
+                <p>🔍 <strong>Search:</strong> Use fuzzy search to find models by name, provider, or features</p>
+                <p>🏷️ <strong>Filter:</strong> Click on tags to filter by capabilities or pricing</p>
+                <p>📌 <strong>Pin:</strong> Save your favorite models for quick access (max 9)</p>
+                <p>📊 <strong>Compare:</strong> Sort by different metrics to find the best model for your needs</p>
+              </div>
             </div>
+
+            <div class="flex items-center justify-between">
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                {{ availableModels.length }} models available
+              </div>
+              <div class="text-xs">
+                <span class="text-blue-500 dark:text-blue-400 font-medium">Pro tip:</span>
+                <span class="text-gray-500 dark:text-gray-400"> Try searching for "vision" or "claude"</span>
+              </div>
+            </div>
+            
             <ModelSettings :available-models="availableModels"
               :show-only-pinned-models="preferences.showOnlyPinnedModels"
               @update:show-only-pinned-models="(value) => preferences.showOnlyPinnedModels = value" />
@@ -532,5 +798,21 @@ const handleSignOut = async () => {
   @apply focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400;
   @apply disabled:opacity-50 disabled:cursor-not-allowed;
   @apply transition-colors duration-200;
+}
+
+/* Animation for search results */
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

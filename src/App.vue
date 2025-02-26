@@ -13,8 +13,9 @@
       <!-- Title Bar -->
       <TitleBar :model-name="modelName" :is-loading="isLoading" :is-sending="isSending"
         :is-context-panel-open="isContextPanelOpen" :is-chat-sidebar-open="isChatSidebarOpen" :is-mobile="isMobile"
+        :current-model="currentModel" :available-models="availableModels"
         @update:is-context-panel-open="isContextPanelOpen = $event"
-        @update:is-chat-sidebar-open="isChatSidebarOpen = $event" class="relative z-20 flex-shrink-0" />
+        @update:is-chat-sidebar-open="isChatSidebarOpen = $event" @set-model="setModel" class="relative z-20 flex-shrink-0" />
 
       <!-- Main Content Area -->
       <div class="flex-1 flex min-h-0 p-1.5 gap-1.5 relative overflow-hidden">
@@ -26,9 +27,8 @@
             'bg-white dark:bg-gray-950 rounded-lg overflow-hidden flex flex-col',
             isMobile ? 'fixed inset-y-0 left-0 z-30 w-80 mt-10' : 'w-[38.2%] max-w-sm flex-shrink-0'
           ]">
-            <ChatSidebar :chat-history="chatHistory" :current-chat-id="currentChatId" :current-model="currentModel"
-              :available-models="availableModels" :show-only-pinned-models="preferences.showOnlyPinnedModels"
-              @new-chat="createNewChat" @load-chat="loadChat" @set-model="setModel" @delete-chat="handleDeleteChat" />
+            <ChatSidebar :chat-history="chatHistory" :current-chat-id="currentChatId"
+              @new-chat="createNewChat" @load-chat="loadChat" @delete-chat="handleDeleteChat" />
           </div>
         </Transition>
 
@@ -92,17 +92,28 @@
     <SettingsModal v-model="isSettingsModalOpen" :theme="isDark ? 'dark' : 'light'" :show-progress-bar="true"
       :show-only-pinned-models="preferences.showOnlyPinnedModels" :available-models="availableModels"
       @update:theme="(theme) => isDark = theme === 'dark'" @update:show-progress-bar="(value) => { }"
-      @validate-api-key="setApiKey"
+      @validate-api-key="setApiKey" @select-model="setModel"
       @update:show-only-pinned-models="(value) => preferences.showOnlyPinnedModels = value" />
   </div>
 </template>
 
 <script setup lang="ts">
+// Core Vue imports
 import { onMounted, ref, watch, computed, nextTick, onUnmounted } from 'vue'
+
+// VueUse utilities
+import { useBreakpoints, useLocalStorage, useKeyModifier, onKeyStroke } from '@vueuse/core'
+
+// Application composables
 import { useLoadingSequence } from './composables/useLoadingSequence'
 import { useActiveUser } from './composables/useActiveUser'
-import { useBreakpoints, useLocalStorage, useEventBus, useKeyModifier, onKeyStroke } from '@vueuse/core'
 import { useTheme } from './composables/useTheme'
+import { useOpenRouter } from './composables/useOpenRouter'
+import { useSupabase } from './composables/useSupabase'
+import { useAIChat } from './composables/useAIChat'
+import { useStore } from './lib/store'
+
+// Component imports
 import LoadingOverlay from './components/LoadingOverlay.vue'
 import LoginOverlay from './components/LoginOverlay.vue'
 import TitleBar from './components/TitleBar.vue'
@@ -115,150 +126,164 @@ import ContextAlchemyPanel from './components/ContextAlchemyPanel.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import DebugOverlay from './components/DebugOverlay.vue'
 import SettingsModal from './components/SettingsModal.vue'
-import type { ChatMessage as ChatMessageType, ChatStats, OpenRouterModel, Chat } from './types'
-import { useOpenRouter } from './composables/useOpenRouter'
-import { useSupabase } from './composables/useSupabase'
-import { useAIChat } from './composables/useAIChat'
-import { useStore } from './lib/store'
+
+// Types
+import type { ChatMessage as ChatMessageType, ChatStats, Chat } from './types'
+
+// Utilities
 import logger from './lib/logger'
 
-const { steps, addStep, startSequence, completeStep, isComplete } = useLoadingSequence()
+// =========================================
+// Core application state and composables
+// =========================================
 const { isAuthenticated, user } = useActiveUser()
-const { loadChatHistories, supabase, saveChatHistory } = useSupabase()
-const breakpoints = useBreakpoints({
-  mobile: 640
-})
-const isMobile = breakpoints.smaller('mobile')
-
-// Initialize theme
+const { loadChatHistories, saveChatHistory } = useSupabase()
 const { isDark, systemPrefersDark } = useTheme()
-
-// Watch system preference changes
-watch(systemPrefersDark, (prefersDark) => {
-  // Update theme class on root element
-  document.documentElement.classList.toggle('dark', prefersDark)
-}, { immediate: true })
-
-// Initialize composables
 const aiChat = useAIChat()
 const openRouter = useOpenRouter()
 const store = useStore()
 
-// Setup IPC listeners for menu actions
-onMounted(() => {
-  if (window.electron) {
-    const cleanupFns = [
-      window.electron.onOpenSettings(() => {
-        console.log('Opening settings from menu')
-        isSettingsModalOpen.value = true
-      }),
+// =========================================
+// Responsive layout
+// =========================================
+const breakpoints = useBreakpoints({ mobile: 640 })
+const isMobile = breakpoints.smaller('mobile')
 
-      window.electron.onNewChat(() => {
-        console.log('Creating new chat from menu')
-        createNewChat()
-      }),
+// =========================================
+// Loading sequence
+// =========================================
+const { steps, addStep, startSequence, completeStep, isComplete } = useLoadingSequence()
 
-      window.electron.onExportChat(() => {
-        console.log('Exporting chat from menu')
-        exportChat()
-      }),
-
-      window.electron.onToggleChatSidebar(() => {
-        console.log('Toggling chat sidebar from menu')
-        isChatSidebarOpen.value = !isChatSidebarOpen.value
-      }),
-
-      window.electron.onToggleContextPanel(() => {
-        console.log('Toggling context panel from menu')
-        isContextPanelOpen.value = !isContextPanelOpen.value
-      })
-    ]
-
-    // Cleanup listeners when component unmounts
-    onUnmounted(() => {
-      console.log('Cleaning up IPC listeners')
-      cleanupFns.forEach(cleanup => cleanup && cleanup())
-    })
-  }
-})
-
-// Keyboard shortcuts
-const meta = useKeyModifier('Meta')
-
-// Toggle panels with keyboard shortcuts
-onKeyStroke('k', (e) => {
-  if (meta.value) {
-    e.preventDefault()
-    isChatSidebarOpen.value = !isChatSidebarOpen.value
-  }
-})
-
-onKeyStroke('/', (e) => {
-  if (meta.value) {
-    e.preventDefault()
-    isContextPanelOpen.value = !isContextPanelOpen.value
-  }
-})
-
-onKeyStroke('n', (e) => {
-  if (meta.value) {
-    e.preventDefault()
-    createNewChat()
-  }
-})
-
-// Add settings shortcut (Command + ,)
-onKeyStroke(',', (e) => {
-  if (meta.value) {
-    e.preventDefault()
-    isSettingsModalOpen.value = !isSettingsModalOpen.value
-  }
-})
-
-// Chat state
-const messages = computed(() => aiChat.messages.value)
-const chatHistory = ref<Chat[]>([])
-const availableModels = computed(() => {
-  return openRouter.availableModels.value?.map(model => ({
-    ...model, // Keep all original properties
-    name: model.name || model.id.split('/').pop() || '',
-    description: model.description
-  })) || []
-})
-const preferences = useLocalStorage('preferences', {
-  showOnlyPinnedModels: false,
-  // Add other preferences here as we need them
-})
-const chatContainerRef = ref<HTMLElement>()
-const messageInput = ref('')
-
+// =========================================
 // UI state
+// =========================================
 const isLoading = computed(() => aiChat.isLoading.value)
 const isSending = ref(false)
 const isContextPanelOpen = useLocalStorage('isContextPanelOpen', false)
-const isChatSidebarOpen = useLocalStorage('isChatSidebarOpen', !isMobile)
+const isChatSidebarOpen = useLocalStorage('isChatSidebarOpen', !isMobile.value)
 const isSettingsModalOpen = ref(false)
 const showMentionPopup = ref(false)
 const isSearchingFiles = ref(false)
 const hasObsidianVault = ref(false)
 const obsidianSearchResults = ref([])
 const searchQuery = ref('')
+const chatContainerRef = ref<HTMLElement>()
+const messageInput = ref('')
 
-// Computed properties from AI Chat
+// =========================================
+// Chat state
+// =========================================
+const messages = computed(() => aiChat.messages.value)
+const chatHistory = ref<Chat[]>([])
 const currentChatId = computed(() => aiChat.currentChatId.value)
 const currentModel = computed(() => aiChat.currentModel.value)
 const modelName = computed(() => aiChat.modelName.value)
 const chatStats = computed(() => aiChat.chatStats.value)
-
-// Sync hasValidKey with openRouter
 const hasValidKey = computed(() => openRouter.hasValidKey.value)
 
-// Add computed property for showing welcome screen
+// User preferences
+const preferences = useLocalStorage('preferences', {
+  showOnlyPinnedModels: false,
+})
+
+// =========================================
+// Computed properties
+// =========================================
+const availableModels = computed(() => {
+  return openRouter.availableModels.value?.map(model => ({
+    ...model,
+    name: model.name || model.id.split('/').pop() || '',
+    description: model.description
+  })) || []
+})
+
 const shouldShowWelcome = computed(() => {
   return messages.value.length === 0 && chatHistory.value.length === 0
 })
 
-// Add function to sync chat history from Supabase
+// =========================================
+// Theme handling
+// =========================================
+watch(systemPrefersDark, (prefersDark) => {
+  document.documentElement.classList.toggle('dark', prefersDark)
+}, { immediate: true })
+
+// =========================================
+// Keyboard shortcuts
+// =========================================
+const setupKeyboardShortcuts = () => {
+  const meta = useKeyModifier('Meta')
+  
+  // Toggle chat sidebar (Cmd+K)
+  onKeyStroke('k', (e) => {
+    if (meta.value) {
+      e.preventDefault()
+      isChatSidebarOpen.value = !isChatSidebarOpen.value
+    }
+  })
+  
+  // Toggle context panel (Cmd+/)
+  onKeyStroke('/', (e) => {
+    if (meta.value) {
+      e.preventDefault()
+      isContextPanelOpen.value = !isContextPanelOpen.value
+    }
+  })
+  
+  // New chat (Cmd+N)
+  onKeyStroke('n', (e) => {
+    if (meta.value) {
+      e.preventDefault()
+      createNewChat()
+    }
+  })
+  
+  // Settings (Cmd+,)
+  onKeyStroke(',', (e) => {
+    if (meta.value) {
+      e.preventDefault()
+      isSettingsModalOpen.value = !isSettingsModalOpen.value
+    }
+  })
+}
+
+// =========================================
+// IPC event handling for desktop app
+// =========================================
+const setupIpcListeners = () => {
+  if (!window.electron) return []
+  
+  return [
+    window.electron.onOpenSettings(() => {
+      logger.debug('Opening settings from menu')
+      isSettingsModalOpen.value = true
+    }),
+
+    window.electron.onNewChat(() => {
+      logger.debug('Creating new chat from menu')
+      createNewChat()
+    }),
+
+    window.electron.onExportChat(() => {
+      logger.debug('Exporting chat from menu')
+      exportChat()
+    }),
+
+    window.electron.onToggleChatSidebar(() => {
+      logger.debug('Toggling chat sidebar from menu')
+      isChatSidebarOpen.value = !isChatSidebarOpen.value
+    }),
+
+    window.electron.onToggleContextPanel(() => {
+      logger.debug('Toggling context panel from menu')
+      isContextPanelOpen.value = !isContextPanelOpen.value
+    })
+  ]
+}
+
+// =========================================
+// Chat history synchronization
+// =========================================
 const syncChatHistory = async () => {
   try {
     logger.debug("Starting chat history sync", {
@@ -269,23 +294,12 @@ const syncChatHistory = async () => {
     })
 
     const histories = await loadChatHistories()
-    logger.debug("Raw histories from Supabase", {
-      count: histories?.length || 0,
-      firstChat: histories?.[0]?.id,
-      lastChat: histories?.[histories?.length - 1]?.id,
-      allIds: histories?.map(h => h.id)
-    })
-
+    
     if (histories) {
       chatHistory.value = histories
       logger.debug("Chat history updated", {
         newLength: chatHistory.value.length,
-        currentChat: currentChatId.value,
-        chatTitles: chatHistory.value.map(c => ({ id: c.id, title: c.title })),
-        messageStats: chatHistory.value.map(c => ({
-          id: c.id,
-          messageCount: c.messages?.length || 0
-        }))
+        currentChat: currentChatId.value
       })
     } else {
       logger.warn("No histories returned from Supabase")
@@ -295,18 +309,16 @@ const syncChatHistory = async () => {
   }
 }
 
-// Methods
+// =========================================
+// Chat management methods
+// =========================================
 const createNewChat = async () => {
   try {
-    logger.debug("Creating new chat from UI", {
-      currentModel: currentModel.value,
-      currentHistoryLength: chatHistory.value.length
-    })
+    logger.debug("Creating new chat from UI")
 
-    // Generate a UUID for the new chat that will be consistent between local and Supabase
+    // Generate a UUID for the new chat
     const chatId = crypto.randomUUID()
-    logger.debug("Generated new chat ID", { chatId })
-
+    
     // Create new chat with the pre-generated ID
     const newChat = {
       id: chatId,
@@ -322,28 +334,14 @@ const createNewChat = async () => {
     }
 
     // Save to Supabase first
-    logger.debug("Saving new chat to Supabase", { chat: newChat })
     const savedChat = await saveChatHistory(newChat)
-    logger.debug("Chat saved to Supabase", {
-      savedId: savedChat.id,
-      model: savedChat.model
-    })
-
+    
     // Update aiChat state
     await aiChat.loadChat(savedChat.id)
-    logger.debug("Loaded new chat in aiChat", {
-      currentChatId: aiChat.currentChatId.value,
-      messageCount: aiChat.messages.value.length
-    })
-
+    
     // Sync chat history
     await syncChatHistory()
-    logger.debug("History synced after new chat", {
-      historyLength: chatHistory.value.length,
-      newChatInHistory: chatHistory.value.some(c => c.id === savedChat.id),
-      allChatIds: chatHistory.value.map(c => c.id)
-    })
-
+    
     return savedChat
   } catch (error) {
     logger.error('Failed to create new chat:', error)
@@ -353,11 +351,7 @@ const createNewChat = async () => {
 
 const loadChat = async (id: string) => {
   try {
-    logger.debug("Loading chat", {
-      id,
-      currentChatId: currentChatId.value,
-      currentHistoryLength: chatHistory.value.length
-    })
+    logger.debug("Loading chat", { id })
 
     isSending.value = true // Show loading state in input
     await aiChat.loadChat(id)
@@ -367,17 +361,7 @@ const loadChat = async (id: string) => {
       scrollToBottom()
     })
 
-    logger.debug("Chat loaded in aiChat", {
-      loadedId: id,
-      messageCount: messages.value.length
-    })
-
     await syncChatHistory()
-    logger.debug("History synced after loading chat", {
-      historyLength: chatHistory.value.length,
-      loadedChatInHistory: chatHistory.value.some(c => c.id === id),
-      currentChatMessages: messages.value.length
-    })
   } catch (error) {
     logger.error('Failed to load chat:', error)
   } finally {
@@ -391,17 +375,21 @@ const setModel = (modelId: string) => {
 
 const handleDeleteChat = async (id: string) => {
   // TODO: Implement chat deletion
+  logger.debug('Delete chat requested for:', id)
 }
 
 const exportChat = () => {
   aiChat.exportChat()
 }
 
+// =========================================
+// API and message handling
+// =========================================
 const setApiKey = async (key: string) => {
   try {
     await openRouter.saveApiKey(key)
   } catch (error) {
-    console.error('Failed to save API key:', error)
+    logger.error('Failed to save API key:', error)
   }
 }
 
@@ -412,67 +400,52 @@ const handleSendMessage = async (content: string, images?: File[]) => {
   try {
     await aiChat.sendMessage(content, undefined, images);
   } catch (error) {
-    console.error('Failed to send message:', error);
+    logger.error('Failed to send message:', error);
   } finally {
     isSending.value = false;
   }
 };
 
-const handleObsidianLink = () => { }
-const handlePruneBefore = (message: ChatMessageType) => {
-  // Implement pruning logic
-  console.log('Pruning before message:', message)
-}
-const handleRemoveDocument = (path: string) => {
-  // Implement document removal logic
-  console.log('Removing document:', path)
-}
-const formatModelCost = (modelId: string, cost: number): string => {
-  return `$${cost.toFixed(4)}`
-}
-
-// Add scroll to bottom functionality
+// =========================================
+// UI utility functions
+// =========================================
 const scrollToBottom = () => {
   if (chatContainerRef.value) {
     chatContainerRef.value.scrollTop = chatContainerRef.value.scrollHeight
   }
 }
 
-// Watch messages and scroll to bottom when they change
-watch(messages, () => {
-  // Use nextTick to ensure DOM is updated before scrolling
-  nextTick(() => {
-    scrollToBottom()
-  })
-}, { deep: true })
+const formatModelCost = (modelId: string, cost: number): string => {
+  return `$${cost.toFixed(4)}`
+}
 
-// Watch for chat updates
-onMounted(async () => {
+// =========================================
+// Placeholder functions for future implementation
+// =========================================
+const handleObsidianLink = () => { 
+  // Placeholder for Obsidian integration
+}
+
+const handlePruneBefore = (message: ChatMessageType) => {
+  // Placeholder for message pruning
+  logger.debug('Pruning before message:', message.id)
+}
+
+const handleRemoveDocument = (path: string) => {
+  // Placeholder for document removal
+  logger.debug('Removing document:', path)
+}
+
+// =========================================
+// Loading sequence implementation
+// =========================================
+const initializeLoadingSequence = async () => {
   try {
-    // Add loading steps
-    addStep({
-      id: 'init',
-      label: 'Initializing application...',
-      delay: 0
-    })
-
-    addStep({
-      id: 'auth',
-      label: 'Checking authentication...',
-      delay: 300
-    })
-
-    addStep({
-      id: 'models',
-      label: 'Loading available models...',
-      delay: 300
-    })
-
-    addStep({
-      id: 'chat-history',
-      label: 'Loading chat history...',
-      delay: 300
-    })
+    // Define loading steps
+    addStep({ id: 'init', label: 'Initializing application...', delay: 0 })
+    addStep({ id: 'auth', label: 'Checking authentication...', delay: 300 })
+    addStep({ id: 'models', label: 'Loading available models...', delay: 300 })
+    addStep({ id: 'chat-history', label: 'Loading chat history...', delay: 300 })
 
     // Start the sequence
     await startSequence()
@@ -535,23 +508,40 @@ onMounted(async () => {
     logger.error('Error during loading sequence:', error)
     steps.value.forEach(step => completeStep(step.id, false))
   }
+}
+
+// =========================================
+// Lifecycle hooks and watchers
+// =========================================
+onMounted(async () => {
+  // Setup keyboard shortcuts
+  setupKeyboardShortcuts()
+  
+  // Setup IPC listeners for desktop app
+  const cleanupFns = setupIpcListeners()
+  
+  // Initialize loading sequence
+  await initializeLoadingSequence()
+  
+  // Cleanup listeners when component unmounts
+  onUnmounted(() => {
+    logger.debug('Cleaning up IPC listeners')
+    cleanupFns.forEach(cleanup => cleanup && cleanup())
+  })
 })
 
-// Watch chat history changes
-watch(chatHistory, (newHistory) => {
-  // logger.debug("Chat history changed", {
-  //   length: newHistory.length,
-  //   ids: newHistory.map(c => c.id),
-  //   currentChatId: currentChatId.value
-  // })
+// Watch messages and scroll to bottom when they change
+watch(messages, () => {
+  nextTick(() => {
+    scrollToBottom()
+  })
 }, { deep: true })
 
 // Watch for auth state to reload chat history
 watch(isAuthenticated, async (newValue) => {
   logger.debug("Auth state changed", {
     isAuthenticated: newValue,
-    userId: user?.value?.id,
-    currentHistoryLength: chatHistory.value.length
+    userId: user?.value?.id
   })
 
   if (newValue) {

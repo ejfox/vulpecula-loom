@@ -39,6 +39,7 @@ export interface ChatStats {
   completionTokens: number;
   cost: number;
   totalMessages: number;
+  responseTime?: number;
 }
 
 export interface IncludedFile {
