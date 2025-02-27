@@ -1,7 +1,7 @@
 <template>
   <Transition name="fade">
     <div v-if="isVisible" ref="debugWindow"
-      class="fixed z-[100] p-4 bg-gray-900/90 text-white rounded-lg shadow-xl border border-gray-700/50 backdrop-blur-sm"
+      class="fixed z-[100] p-4 bg-oled-black/90 text-white rounded-lg shadow-xl border border-gray-700/50 backdrop-blur-sm"
       :style="{ left: x + 'px', top: y + 'px', minWidth: '300px' }" @pointerdown="startDrag">
       <div class="flex items-center justify-between mb-3 select-none cursor-move">
         <div class="flex items-center gap-2">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useActiveUser } from '../composables/useActiveUser'
 import type { OpenRouterModel } from '../types'
 
@@ -43,6 +43,16 @@ const isUserMenuOpen = ref(false)
 
 const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen', 'set-model', 'open-settings', 'open-api-keys'])
 
+// Add state for debug console visibility
+const isDebugConsoleVisible = ref(localStorage.getItem('logTickerShow') !== 'false')
+
+// Listen for changes to debug console visibility
+const handleStorageChange = (e: StorageEvent) => {
+  if (e.key === 'logTickerShow') {
+    isDebugConsoleVisible.value = e.newValue !== 'false'
+  }
+}
+
 // Handle sign out
 const handleSignOut = async () => {
   try {
@@ -82,17 +92,41 @@ const getModelDisplayName = (modelId: string): string => {
   return model?.name || modelId.split('/').pop() || modelId
 }
 
-// Close menu when clicking outside
-onMounted(() => {
-  const handleClickOutside = (e: MouseEvent) => {
-    if (isUserMenuOpen.value && !e.target.closest('.user-menu')) {
-      isUserMenuOpen.value = false
-    }
+// Handle click outside with proper type casting
+const handleClickOutside = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (isUserMenuOpen.value && !target.closest('#user-menu')) {
+    isUserMenuOpen.value = false
   }
+}
+
+onMounted(() => {
+  // ... existing code ...
+
+  // Add storage listener
+  window.addEventListener('storage', handleStorageChange)
+
+  // Listen for custom event
+  window.addEventListener('logticker-visibility-changed', ((e: Event) => {
+    const customEvent = e as CustomEvent
+    isDebugConsoleVisible.value = customEvent.detail?.visible || false
+  }) as EventListener)
+
+  // Add click event listener 
   document.addEventListener('click', handleClickOutside)
-  onUnmounted(() => {
-    document.removeEventListener('click', handleClickOutside)
-  })
+})
+
+onUnmounted(() => {
+  // ... existing code ...
+
+  // Remove storage listener
+  window.removeEventListener('storage', handleStorageChange)
+
+  // Remove custom event listener
+  window.removeEventListener('logticker-visibility-changed', (() => { }) as EventListener)
+
+  // Remove click event listener
+  document.removeEventListener('click', handleClickOutside)
 })
 
 // Expose window controls for Electron
@@ -125,6 +159,31 @@ const openSettings = () => {
 const openApiKeys = () => {
   emit('open-api-keys')
   isUserMenuOpen.value = false
+}
+
+// If there's a function to toggle the debug console in the window object, we'll use it
+const toggleDebugConsole = () => {
+  // @ts-ignore - accessing a property that might not exist
+  if (typeof window.toggleDebugConsole === 'function') {
+    // @ts-ignore
+    window.toggleDebugConsole();
+  } else {
+    // Fallback if the global function isn't available
+    const currentShow = localStorage.getItem('logTickerShow');
+    const newShow = currentShow === 'false' ? 'true' : 'false';
+    localStorage.setItem('logTickerShow', newShow);
+
+    // Dispatch event to notify components
+    const event = new CustomEvent('logticker-visibility-changed', {
+      detail: { visible: newShow === 'true' }
+    });
+    window.dispatchEvent(event);
+  }
+}
+
+// Handle opening user menu
+const toggleUserMenu = () => {
+  isUserMenuOpen.value = !isUserMenuOpen.value
 }
 </script>
 
@@ -193,14 +252,22 @@ const openApiKeys = () => {
 
       <!-- User Menu -->
       <div class="relative user-menu">
-        <button @click="isUserMenuOpen = !isUserMenuOpen"
-          class="rounded-full w-6 h-6 bg-macos-blue dark:bg-ayu-dark-entity flex items-center justify-center text-white text-xs font-medium">
-          EF
+        <!-- User Menu Toggle -->
+        <button @click="toggleUserMenu"
+          class="px-2 py-1 ml-1 rounded-md hover:bg-gray-200 dark:hover:bg-ayu-dark-line relative user-menu-toggle"
+          id="user-menu-toggle">
+          <svg class="w-5 h-5 text-gray-600 dark:text-ayu-dark-comment" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span v-if="user && user.email" class="sr-only">{{ user.email }}</span>
         </button>
 
         <!-- User Menu Dropdown -->
         <div v-if="isUserMenuOpen"
-          class="absolute right-0 mt-1 w-48 bg-white/80 dark:bg-ayu-dark-panel backdrop-blur-md rounded-md shadow-lg border border-macos-gray-200 dark:border-ayu-dark-line z-10">
+          class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-ayu-dark-bg border border-gray-300 dark:border-ayu-dark-line rounded-md shadow-lg z-10"
+          id="user-menu">
           <div class="py-1">
             <a href="#" @click.prevent="openSettings"
               class="block px-4 py-2 text-sm text-macos-gray-700 dark:text-ayu-dark-editor-fg hover:bg-macos-gray-100 dark:hover:bg-ayu-dark-line">

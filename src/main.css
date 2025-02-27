@@ -3,6 +3,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import Monaspace Neon font for system-wide use */
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* macOS-inspired UI components */
 @layer components {
   /* Window styling */
@@ -55,6 +72,13 @@
   /* OLED optimized dark mode UI patterns */
   .oled-optimized {
     @apply dark:bg-oled-black dark:text-ayu-dark-editor-fg;
+  }
+  
+  /* Global monospace text styling for metrics and numbers */
+  .monospace-text {
+    font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    letter-spacing: -0.02em;
+    font-feature-settings: "calt" 1, "liga" 1;
   }
 }
 

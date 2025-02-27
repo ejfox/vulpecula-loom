@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick, computed, onUnmounted } from 'vue'
+import { ref, watch, onMounted, nextTick, computed, onUnmounted, inject } from 'vue'
 import type { ChatInputProps, Mention, IncludedFile, ObsidianFile } from '../types'
 import ObsidianMentionPopup from './ObsidianMentionPopup.vue'
 
@@ -88,17 +88,41 @@ const resizeObserver = new ResizeObserver(() => {
   adjustTextareaHeight()
 })
 
+// Add state for log ticker visibility
+const tickerVisible = ref(localStorage.getItem('logTickerShow') !== 'false')
+
+// Storage event handler
+const handleStorageChange = (e: StorageEvent) => {
+  if (e.key === 'logTickerShow') {
+    tickerVisible.value = e.newValue !== 'false'
+  }
+}
+
+// Custom event handler
+const handleTickerVisibilityChange = ((e: Event) => {
+  const customEvent = e as CustomEvent
+  tickerVisible.value = customEvent.detail?.visible || false
+}) as EventListener
+
 onMounted(() => {
   adjustTextareaHeight()
   // Start observing viewport changes
   if (textareaRef.value) {
     resizeObserver.observe(textareaRef.value)
   }
+
+  // Listen for storage changes
+  window.addEventListener('storage', handleStorageChange)
+
+  // Listen for custom event from ticker
+  window.addEventListener('logticker-visibility-changed', handleTickerVisibilityChange)
 })
 
 // Cleanup observer
 onUnmounted(() => {
   resizeObserver.disconnect()
+  window.removeEventListener('storage', handleStorageChange)
+  window.removeEventListener('logticker-visibility-changed', handleTickerVisibilityChange)
 })
 
 // Watch for changes in the message content
@@ -147,7 +171,10 @@ const handleSubmit = () => {
   mentions.value = []
   droppedImages.value = []
 
-  // Maintain focus after sending
+  // Focus immediately
+  textareaRef.value?.focus()
+
+  // Also maintain focus after UI is updated
   nextTick(() => {
     textareaRef.value?.focus()
   })
@@ -197,18 +224,23 @@ const handleInput = (e: Event) => {
 
   // Only process @ symbol if it was just typed (not pasted)
   if (e.inputType === 'insertText' && value[cursorPosition - 1] === '@') {
+    console.log('ChatInput - @ symbol detected, cursorPosition:', cursorPosition)
     mentionStartIndex.value = cursorPosition - 1
     emit('mention-popup', true)
     const query = value.slice(mentionStartIndex.value + 1, cursorPosition)
+    console.log('ChatInput - Initial @ query (should be empty):', query)
     emit('input', query)
   } else if (mentionStartIndex.value >= 0) {
     // Continue handling existing mention
     const query = value.slice(mentionStartIndex.value + 1, cursorPosition)
+    console.log('ChatInput - Updated mention query:', query)
     if (!query.trim() || query.includes(' ')) {
+      console.log('ChatInput - Closing mention popup (empty query or space detected)')
       emit('mention-popup', false)
       mentionStartIndex.value = -1
       emit('input', '')
     } else {
+      console.log('ChatInput - Emitting query for search:', query)
       emit('input', query)
     }
   }
@@ -284,7 +316,8 @@ const removeFile = (fileToRemove: IncludedFile) => {
 </script>
 
 <template>
-  <footer class="flex-shrink-0 p-3 bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800">
+  <footer class="flex-shrink-0 p-3 bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800"
+    :class="{ 'pb-16': tickerVisible }">
     <form @submit.prevent="handleSubmit" class="flex items-center gap-2">
       <div class="relative flex-1">
         <!-- Hidden preview div for styling -->

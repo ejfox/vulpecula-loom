@@ -4,7 +4,13 @@ import { useSupabase } from "./useSupabase";
 import { useActiveUser } from "./useActiveUser";
 import { useStore } from "../lib/store";
 import logger from "../lib/logger";
-import type { ChatMessage, ChatStats, IncludedFile, Chat } from "../types";
+import type {
+  ChatMessage,
+  ChatStats,
+  IncludedFile,
+  Chat,
+  ChatMetadata,
+} from "../types";
 import { useEventBus } from "@vueuse/core";
 import { useDebounceFn } from "@vueuse/core";
 import {
@@ -540,6 +546,31 @@ export function useAIChat() {
     }
   };
 
+  // Add updateChatMetadata function if it doesn't exist
+  const updateChatMetadata = (
+    chatId: string,
+    metadata: Partial<ChatMetadata>
+  ) => {
+    // Find the chat in the supabase client
+    const supabase = useSupabase();
+    logger.debug("Updating chat metadata:", { chatId, metadata });
+
+    // Update metadata in the database
+    supabase.client
+      .from("chats")
+      .update({
+        metadata: metadata,
+      })
+      .eq("id", chatId)
+      .then(({ error }) => {
+        if (error) {
+          logger.error("Failed to update chat metadata:", error);
+        } else {
+          logger.debug("Chat metadata updated successfully");
+        }
+      });
+  };
+
   return {
     // State
     messages,
@@ -566,5 +597,6 @@ export function useAIChat() {
     syncChatHistory,
     generateChatTitle,
     chatBus,
+    updateChatMetadata,
   };
 }

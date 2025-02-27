@@ -93,7 +93,11 @@ export interface ChatMetadata {
   stats?: ChatStats;
   summary?: string;
   summaryLastUpdated?: string;
-  autoTitle?: string;
+  autoTitle?: {
+    value: string;
+    lastGeneratedAt: string;
+  };
+  lastTitleGeneration?: string;
   tokens?: {
     total: number;
   };

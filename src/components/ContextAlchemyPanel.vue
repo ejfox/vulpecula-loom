@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useBreakpoints } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { formatDistanceToNow, differenceInMinutes, format } from 'date-fns'
 import { useOpenRouter } from '../composables/useOpenRouter'
 import type { ChatMessage } from '../types'
@@ -19,6 +19,22 @@ const emit = defineEmits<{
   'prune-before': [message: ChatMessage]
   'remove-document': [path: string]
 }>()
+
+// Preload Monaspace font when component is mounted
+onMounted(() => {
+  preloadFont('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Regular.woff');
+  preloadFont('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Bold.woff');
+})
+
+function preloadFont(url: string) {
+  const link = document.createElement('link');
+  link.href = url;
+  link.rel = 'preload';
+  link.as = 'font';
+  link.type = 'font/woff';
+  link.crossOrigin = 'anonymous';
+  document.head.appendChild(link);
+}
 
 const { formatModelCost } = useOpenRouter()
 
@@ -252,7 +268,7 @@ const messageAnalysis = computed<MessageAnalysis | null>(() => {
     largestMessages,
     messagesWithCumulative,
     pruningPoints,
-    averageTokensPerMessage: runningTotal / props.messages.length
+    averageTokensPerMessage: props.messages.length > 0 ? runningTotal / props.messages.length : 0
   }
 })
 
@@ -277,11 +293,10 @@ const formatTimeAgo = (date: any): string => {
 </script>
 
 <template>
-  <Transition enter-active-class="transition-all duration-300 ease-out"
-    leave-active-class="transition-all duration-200 ease-in" enter-from-class="translate-x-full"
-    enter-to-class="translate-x-0" leave-from-class="translate-x-0" leave-to-class="translate-x-full">
+  <Transition enter-active-class="context-panel-enter" leave-active-class="context-panel-leave"
+    enter-from-class="translate-x-full" leave-to-class="translate-x-full">
     <div v-if="isContextPanelOpen"
-      class="fixed top-[38px] right-0 bottom-0 w-[400px] bg-gray-900 border-l border-white/5 shadow-xl">
+      class="fixed top-[38px] right-0 bottom-0 w-[400px] bg-gray-900 border-l border-white/5 context-panel">
       <div class="h-full flex flex-col">
         <!-- Panel Header -->
         <div class="flex-shrink-0 h-10 flex items-center justify-between px-4 border-b border-white/5">
@@ -296,7 +311,7 @@ const formatTimeAgo = (date: any): string => {
         </div>
 
         <!-- Panel Content -->
-        <div class="flex-1 overflow-y-auto p-4">
+        <div class="flex-1 overflow-y-auto p-4 panel-content">
           <div class="space-y-6">
             <!-- Time Overview -->
             <div v-if="timeAnalysis" class="bg-gray-800/50 rounded-lg p-4">
@@ -304,7 +319,7 @@ const formatTimeAgo = (date: any): string => {
               <dl class="grid grid-cols-2 gap-4">
                 <div>
                   <dt class="text-xs text-white/60">Duration</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">
                     {{ timeAnalysis.totalDuration }} minutes
                   </dd>
                 </div>
@@ -316,13 +331,13 @@ const formatTimeAgo = (date: any): string => {
                 </div>
                 <div>
                   <dt class="text-xs text-white/60">Messages/Min</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">
                     {{ timeAnalysis.messageFrequency.toFixed(1) }}
                   </dd>
                 </div>
                 <div>
                   <dt class="text-xs text-white/60">Tokens/Min</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">
                     {{ Math.round(timeAnalysis.tokenRate) }}
                   </dd>
                 </div>
@@ -336,19 +351,19 @@ const formatTimeAgo = (date: any): string => {
                 <div v-for="(period, index) in timeAnalysis.highActivityPeriods" :key="index"
                   class="p-3 rounded-md bg-gray-800/30 border border-white/5">
                   <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs text-white/60">
+                    <span class="text-xs text-white/60 monospace-text">
                       {{ formatTime(period.start) }} - {{ formatTime(period.end) }}
                     </span>
-                    <span class="text-xs font-medium text-white/80">
+                    <span class="text-xs font-medium text-white/80 monospace-text">
                       {{ period.duration }}min
                     </span>
                   </div>
                   <div class="flex items-center justify-between">
                     <span class="text-xs text-white/60">
-                      {{ period.messageCount }} messages
+                      <span class="monospace-text">{{ period.messageCount }}</span> messages
                     </span>
                     <span class="text-xs font-medium text-white/80">
-                      {{ Math.round(period.tokenDensity) }} tokens/min
+                      <span class="monospace-text">{{ Math.round(period.tokenDensity) }}</span> tokens/min
                     </span>
                   </div>
                 </div>
@@ -358,24 +373,49 @@ const formatTimeAgo = (date: any): string => {
             <!-- Current Context Size -->
             <div class="bg-gray-800/50 rounded-lg p-4">
               <h3 class="text-sm font-medium text-white/90 mb-3">Current Context Size</h3>
+
+              <!-- Waffle chart visualization of context window usage -->
+              <div class="mb-4">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-white/60">Context Window Usage</span>
+                  <span class="text-xs font-medium text-white/80 monospace-text">
+                    {{ hasTotalTokens ? Math.round((totalTokens / 8192) * 100) : 0 }}% of 8K
+                  </span>
+                </div>
+                <div class="grid grid-cols-10 gap-1">
+                  <div v-if="hasTotalTokens && totalTokens > 0" v-for="i in Math.ceil((totalTokens / 8192) * 100)"
+                    :key="i"
+                    class="aspect-square rounded-sm transition-colors duration-300 bg-gradient-to-br from-blue-500 to-purple-600">
+                  </div>
+                  <div v-else class="text-xs text-white/40 py-2">No token data available</div>
+                </div>
+                <div class="flex justify-between mt-1 text-xs text-white/40 monospace-text">
+                  <span>0%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                  <span>75%</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
               <dl class="grid grid-cols-2 gap-4">
                 <div>
                   <dt class="text-xs text-white/60">Total Messages</dt>
-                  <dd class="mt-1 text-2xl font-semibold text-white/90">{{ props.messages.length }}</dd>
+                  <dd class="mt-1 text-2xl font-semibold text-white/90 monospace-text">{{ props.messages.length }}</dd>
                 </div>
                 <div v-if="hasTotalTokens">
                   <dt class="text-xs text-white/60">Total Tokens</dt>
-                  <dd class="mt-1 text-2xl font-semibold text-white/90">{{ totalTokens }}</dd>
+                  <dd class="mt-1 text-2xl font-semibold text-white/90 monospace-text">{{ totalTokens }}</dd>
                 </div>
-                <div v-if="hasTotalTokens && messageAnalysis?.averageTokensPerMessage > 0">
-                  <dt class="text-xs text-white/60">Avg Tokens/Message</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">
-                    {{ messageAnalysis ? Math.round(messageAnalysis.averageTokensPerMessage) : 0 }}
+                <div v-if="hasTotalTokens && messageAnalysis && messageAnalysis.averageTokensPerMessage > 0">
+                  <dt class="text-xs text-white/60">Avg. Tokens/Message</dt>
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">
+                    {{ Math.round(messageAnalysis.averageTokensPerMessage) }}
                   </dd>
                 </div>
                 <div v-if="hasCost">
                   <dt class="text-xs text-white/60">Total Cost</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">{{ totalCost }}</dd>
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">{{ totalCost }}</dd>
                 </div>
               </dl>
             </div>
@@ -389,7 +429,8 @@ const formatTimeAgo = (date: any): string => {
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-xs text-white/60">{{ msg.role === 'user' ? 'User' : 'AI' }} Message</span>
-                      <span class="text-xs font-medium text-white/80">{{ msg.tokens?.total || 0 }} tokens</span>
+                      <span class="text-xs font-medium text-white/80 monospace-text">{{ msg.tokens?.total || 0 }}
+                        tokens</span>
                     </div>
                     <p class="text-xs text-white/80 truncate">{{ msg.content }}</p>
                     <p class="text-xs text-white/40 mt-1">{{ formatTimeAgo(msg.timestamp) }}</p>
@@ -401,23 +442,56 @@ const formatTimeAgo = (date: any): string => {
             <!-- Token Growth -->
             <div v-if="messageAnalysis?.pruningPoints.length" class="bg-gray-800/50 rounded-lg p-4">
               <h3 class="text-sm font-medium text-white/90 mb-3">Cumulative Token Usage</h3>
+
+              <!-- Token Beeswarm Visualization -->
+              <div class="mb-4 mt-2 relative h-24 bg-gray-800/30 rounded-lg overflow-hidden">
+                <!-- Timeline axis -->
+                <div class="absolute bottom-0 left-0 right-0 h-px bg-gray-700/50"></div>
+
+                <!-- Message Units -->
+                <div v-if="messageAnalysis?.messagesWithCumulative.length" class="absolute inset-0 p-2">
+                  <div v-for="(msg, idx) in messageAnalysis.messagesWithCumulative" :key="idx"
+                    class="absolute rounded-full transition-all duration-300"
+                    :class="msg.role === 'user' ? 'bg-blue-500/70' : 'bg-purple-500/70'" :style="{
+                      width: `${Math.max(4, Math.min(12, Math.sqrt(msg.tokens?.total || 0) / 5))}px`,
+                      height: `${Math.max(4, Math.min(12, Math.sqrt(msg.tokens?.total || 0) / 5))}px`,
+                      left: `${(idx / Math.max(1, messageAnalysis.messagesWithCumulative.length - 1)) * 100}%`,
+                      bottom: `${Math.min(80, Math.max(10, (msg.tokens?.total || 0) / 40))}%`,
+                      transform: 'translate(-50%, 50%)',
+                      opacity: msg.role === 'assistant' ? 0.9 : 0.7
+                    }"></div>
+                </div>
+
+                <!-- Pattern markers -->
+                <div v-for="(point, idx) in messageAnalysis?.pruningPoints" :key="'point-' + idx"
+                  class="absolute bottom-0 w-px h-full bg-red-500/30" :style="{
+                    left: `${(point.messageNumber / Math.max(1, messageAnalysis.messagesWithCumulative.length)) * 100}%`
+                  }">
+                  <div
+                    class="absolute bottom-full mb-1 text-xs text-red-400 whitespace-nowrap transform -translate-x-1/2 monospace-text">
+                    Message #{{ point.messageNumber }}
+                  </div>
+                </div>
+              </div>
+
               <div class="space-y-2">
                 <div v-for="msg in messageAnalysis.pruningPoints" :key="msg.id"
                   class="p-3 rounded-md bg-gray-800/30 border border-white/5">
                   <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs text-white/60">Message #{{ msg.messageNumber }}</span>
-                    <span class="text-xs font-medium text-white/80">
+                    <span class="text-xs text-white/60">Message #<span class="monospace-text">{{ msg.messageNumber
+                    }}</span></span>
+                    <span class="text-xs font-medium text-white/80 monospace-text">
                       {{ msg.cumulativeTokens }} total tokens
                     </span>
                   </div>
                   <div class="flex items-center justify-between mb-2">
                     <span class="text-xs text-white/60">{{ formatTimeAgo(msg.timestamp) }}</span>
-                    <span class="text-xs text-white/60">
+                    <span class="text-xs text-white/60 monospace-text">
                       +{{ msg.timeSincePrevious }}min gap
                     </span>
                   </div>
                   <p class="text-xs text-white/60 mb-2">
-                    Large token increase (+{{ msg.tokens?.total || 0 }} tokens)
+                    Large token increase (+<span class="monospace-text">{{ msg.tokens?.total || 0 }}</span> tokens)
                   </p>
                   <button @click="selectedPrunePoint = msg"
                     class="text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-white/80 transition-colors"
@@ -432,8 +506,9 @@ const formatTimeAgo = (date: any): string => {
             <div v-if="selectedPrunePoint" class="bg-gray-800/50 rounded-lg p-4">
               <h3 class="text-sm font-medium text-white/90 mb-3">Prune History</h3>
               <p class="text-xs text-white/60 mb-3">
-                Pruning before message #{{ selectedPrunePoint.messageNumber }} will remove
-                {{ selectedPrunePoint.cumulativeTokens }} tokens from the context.
+                Pruning before message #<span class="monospace-text">{{ selectedPrunePoint.messageNumber }}</span> will
+                remove
+                <span class="monospace-text">{{ selectedPrunePoint.cumulativeTokens }}</span> tokens from the context.
               </p>
               <button @click="handlePrune"
                 class="w-full px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-medium transition-colors">
@@ -445,7 +520,7 @@ const formatTimeAgo = (date: any): string => {
             <div v-if="documentAnalysis.documents.length" class="bg-gray-800/50 rounded-lg p-4">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-medium text-white/90">Included Documents</h3>
-                <span class="text-xs text-white/60">
+                <span class="text-xs text-white/60 monospace-text">
                   ~{{ documentAnalysis.totalDocumentTokens }} tokens
                 </span>
               </div>
@@ -455,7 +530,22 @@ const formatTimeAgo = (date: any): string => {
                   class="p-3 rounded-md bg-gray-800/30 border border-white/5">
                   <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-medium text-white/80">{{ doc.title }}</span>
-                    <span class="text-xs text-white/60">~{{ doc.estimatedTokens }} tokens</span>
+                    <span class="text-xs text-white/60 monospace-text">~{{ doc.estimatedTokens }} tokens</span>
+                  </div>
+
+                  <!-- Document token unit chart -->
+                  <div class="mb-2">
+                    <div class="h-2 w-full bg-gray-900/50 rounded-full overflow-hidden">
+                      <div class="h-full bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-300"
+                        :style="{
+                          width: `${Math.min(100, (doc.estimatedTokens / Math.max(1, documentAnalysis.totalDocumentTokens)) * 100 * 3)}%`
+                        }"></div>
+                    </div>
+                    <div class="flex justify-between mt-1 text-[9px] text-white/40 monospace-text">
+                      <span>{{ Math.round((doc.estimatedTokens / Math.max(1, documentAnalysis.totalDocumentTokens)) *
+                        100) }}% of document tokens</span>
+                      <span>{{ Math.round((doc.estimatedTokens / 8192) * 100) }}% of context</span>
+                    </div>
                   </div>
 
                   <!-- Document preview -->
@@ -464,7 +554,7 @@ const formatTimeAgo = (date: any): string => {
                   </div>
 
                   <div class="flex items-center justify-between text-xs text-white/60 mb-2">
-                    <span>Used {{ doc.usageCount }}×</span>
+                    <span>Used <span class="monospace-text">{{ doc.usageCount }}</span>×</span>
                     <span>Last used {{ formatTimeAgo(doc.lastUsed) }}</span>
                   </div>
 
@@ -479,13 +569,13 @@ const formatTimeAgo = (date: any): string => {
               <dl class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/5">
                 <div>
                   <dt class="text-xs text-white/60">Unique Documents</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">
                     {{ documentAnalysis.uniqueDocuments }}
                   </dd>
                 </div>
                 <div>
                   <dt class="text-xs text-white/60">Multi-use Docs</dt>
-                  <dd class="mt-1 text-lg font-medium text-white/80">
+                  <dd class="mt-1 text-lg font-medium text-white/80 monospace-text">
                     {{ documentAnalysis.documentsWithMultipleUses }}
                   </dd>
                 </div>
@@ -497,3 +587,139 @@ const formatTimeAgo = (date: any): string => {
     </div>
   </Transition>
 </template>
+
+<style scoped>
+.context-panel {
+  position: fixed !important;
+  overflow: hidden;
+  z-index: 30;
+  box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+}
+
+/* Import Monaspace Neon font from GitHub with proper fallbacks */
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Apply monospace font to elements with proper fallbacks */
+.monospace-text {
+  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  letter-spacing: -0.02em;
+  font-feature-settings: "calt" 1, "liga" 1;
+}
+
+.context-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: rgba(17, 24, 39, 0);
+  /* Dark overlay that matches the panel bg */
+  pointer-events: none;
+  z-index: 10;
+  transition: background-color 180ms ease-in-out;
+}
+
+/* Beautiful coordinated transitions */
+.context-panel-enter {
+  transition: transform 450ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 350ms ease, box-shadow 450ms ease;
+  animation: context-fade-in 450ms forwards;
+}
+
+.context-panel-leave {
+  transition: transform 450ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 250ms ease, box-shadow 350ms ease;
+  animation: context-fade-out 350ms forwards;
+}
+
+@keyframes context-fade-in {
+  0% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+
+  20% {
+    opacity: 0.8;
+  }
+
+  60% {
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.3);
+  }
+
+  100% {
+    opacity: 1;
+    box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@keyframes context-fade-out {
+  0% {
+    opacity: 1;
+    box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+  }
+
+  40% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+/* Add a subtle content flash animation for text */
+.panel-content {
+  animation: content-flash 450ms forwards;
+}
+
+.context-panel-leave .panel-content {
+  animation: content-fade-out 250ms forwards;
+}
+
+@keyframes content-flash {
+  0% {
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 0.5;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes content-fade-out {
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0.3;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Define transition for the panel with quad easing */
+.context-panel {
+  transition-property: transform, box-shadow, opacity;
+  transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition-duration: 450ms;
+  transform-origin: right center;
+}
+</style>

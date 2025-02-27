@@ -1,59 +1,58 @@
 <template>
-  <div class="px-2 py-1 border-b dark:border-gray-700 bg-gray-100 dark:bg-gray-900 font-mono text-xs">
-    <div class="flex items-center justify-between">
-      <!-- Stats Group -->
-      <div class="flex items-center space-x-4">
-        <!-- Token Stats - Only show if we have tokens -->
-        <div v-if="hasTotalTokens" class="flex items-center space-x-1">
-          <div class="flex items-baseline">
-            <span class="text-gray-500 dark:text-gray-400 mr-1">TOKENS</span>
-            <span class="tabular-nums">{{ totalTokenCount }}</span>
-          </div>
-          <div class="flex items-center space-x-1">
-            <span v-if="stats?.promptTokens"
-              class="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded tabular-nums">
-              IN:{{ stats.promptTokens }}
-            </span>
-            <span v-if="stats?.completionTokens"
-              class="px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded tabular-nums">
-              OUT:{{ stats.completionTokens }}
-            </span>
-          </div>
-        </div>
+  <div class="border-b dark:border-gray-700 bg-gray-100 dark:bg-gray-900 font-mono text-xs">
+    <!-- Main Grid Layout -->
+    <div class="grid grid-cols-12 h-9">
+      <!-- Token Count -->
+      <div
+        class="col-span-2 flex items-center px-4 border-r dark:border-gray-800 relative overflow-hidden group/tokens">
+        <span
+          class="absolute left-0 opacity-0 px-4 text-gray-400 dark:text-gray-500 uppercase transform -translate-x-full group-hover/tokens:opacity-100 group-hover/tokens:translate-x-0 transition-all duration-300 ease-out">Tokens</span>
+        <span
+          class="tabular-nums font-medium transform group-hover/tokens:translate-x-16 transition-all duration-300 ease-out">{{
+            totalTokenCount }}</span>
+      </div>
 
-        <!-- Cost Stats - Only show if we have a non-zero cost -->
-        <div v-if="hasCost" class="flex items-center space-x-1">
-          <div class="flex items-baseline">
-            <span class="text-gray-500 dark:text-gray-400 mr-1">TOTAL COST</span>
-            <span class="tabular-nums">{{ formatModelCost('', stats.cost) }}</span>
-          </div>
-          <!-- Only show token cost if we have both tokens and a non-zero cost -->
-          <div v-if="hasTokenCost && formattedTokenCost" class="flex items-center space-x-1">
-            <span class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded tabular-nums">
-              RATE:{{ formattedTokenCost }}
-            </span>
-          </div>
+      <!-- Token Distribution -->
+      <div class="col-span-3 flex items-center px-4 border-r dark:border-gray-800 relative overflow-hidden group/dist">
+        <div
+          class="flex absolute left-0 opacity-0 px-4 transform -translate-x-full group-hover/dist:opacity-100 group-hover/dist:translate-x-0 transition-all duration-300 ease-out">
+          <span class="text-gray-400 dark:text-gray-500">IN/OUT</span>
+        </div>
+        <div class="flex items-center transform group-hover/dist:translate-x-14 transition-all duration-300 ease-out">
+          <span class="text-gray-400 dark:text-gray-500">{{ stats.promptTokens }}</span>
+          <span class="text-gray-400 dark:text-gray-500 mx-1">:</span>
+          <span class="text-gray-400 dark:text-gray-500">{{ stats.completionTokens }}</span>
         </div>
       </div>
 
-      <!-- Right Stats and Actions -->
-      <div class="flex items-center space-x-3">
-        <!-- Time Stats (only if available and non-zero) -->
-        <div v-if="stats?.responseTime && stats.responseTime > 0" class="hidden md:flex items-center space-x-1">
-          <span class="text-gray-500 dark:text-gray-400">TIME</span>
-          <span class="tabular-nums">{{ formatResponseTime(stats.responseTime) }}</span>
-          <span class="text-gray-500 dark:text-gray-400">SEC</span>
-        </div>
+      <!-- Total Cost -->
+      <div class="col-span-3 flex items-center px-4 border-r dark:border-gray-800 relative overflow-hidden group/cost">
+        <span
+          class="absolute left-0 opacity-0 px-4 text-gray-400 dark:text-gray-500 uppercase transform -translate-x-full group-hover/cost:opacity-100 group-hover/cost:translate-x-0 transition-all duration-300 ease-out">Cost</span>
+        <span class="tabular-nums transform group-hover/cost:translate-x-12 transition-all duration-300 ease-out">{{
+          stats.cost ? formatModelCost('', stats.cost) : '0.0¢/GTok' }}</span>
+      </div>
 
-        <!-- Export Button -->
-        <button @click="$emit('export')" class="flex items-center gap-1 px-2 py-0.5 
-                     border rounded transition-colors
-                     hover:bg-gray-200 dark:hover:bg-gray-800">
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      <!-- Token Rate -->
+      <div class="col-span-3 flex items-center px-4 border-r dark:border-gray-800 relative overflow-hidden group/rate">
+        <span
+          class="absolute left-0 opacity-0 px-4 text-gray-400 dark:text-gray-500 uppercase transform -translate-x-full group-hover/rate:opacity-100 group-hover/rate:translate-x-0 transition-all duration-300 ease-out">Rate</span>
+        <span class="tabular-nums transform group-hover/rate:translate-x-12 transition-all duration-300 ease-out">{{
+          formattedTokenCost || "0.0¢/GTok" }}</span>
+      </div>
+
+      <!-- Export Icon Button (replacing text button with minimal icon) -->
+      <div class="col-span-1 flex items-center justify-center overflow-hidden">
+        <button @click="$emit('export')" class="h-full w-full flex items-center justify-center
+                       text-gray-300 dark:text-gray-600 
+                       hover:text-gray-600 dark:hover:text-gray-300
+                       transition-colors duration-300 ease-out 
+                       hover:bg-gray-200 dark:hover:bg-gray-800">
+          <!-- Simple download icon using Unicode -->
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M12 4v8m0 0l-4-4m4 4l4-4m-4 12H6a2 2 0 01-2-2V6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2h-2" />
           </svg>
-          <span>EXPORT</span>
         </button>
       </div>
     </div>
@@ -121,5 +120,11 @@ const formatResponseTime = (ms: number) => {
 /* For better tabular number alignment */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* Custom easing function for more elegant transitions */
+.ease-out {
+  transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1.0);
+  /* This is a quadratic ease-out curve */
 }
 </style>

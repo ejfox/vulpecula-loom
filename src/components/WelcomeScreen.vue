@@ -126,7 +126,8 @@ const openExternalLink = (event: MouseEvent) => {
           <!-- Left Column: API Key Setup -->
           <div class="space-y-6">
             <!-- API Key Section -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+            <div
+              class="bg-white dark:bg-oled-black rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
               <div class="flex items-center gap-3 mb-4">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center" :class="[
                   hasActualKey
@@ -183,7 +184,7 @@ const openExternalLink = (event: MouseEvent) => {
                   <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                     <Icon icon="carbon:information" class="w-4 h-4" />
                     <span>API keys should start with <code
-                        class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">sk-or-</code></span>
+                        class="px-1 py-0.5 bg-gray-100 dark:bg-oled-black rounded">sk-or-</code></span>
                   </div>
 
                   <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -217,7 +218,8 @@ const openExternalLink = (event: MouseEvent) => {
             </div>
 
             <!-- Keyboard Shortcuts -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+            <div
+              class="bg-white dark:bg-oled-black rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
               <div class="flex items-center gap-3 mb-4">
                 <div class="w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
                   <Icon icon="carbon:keyboard" class="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
@@ -230,11 +232,11 @@ const openExternalLink = (event: MouseEvent) => {
               <div class="space-y-3">
                 <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900">
                   <span class="text-gray-600 dark:text-gray-400">Open Settings</span>
-                  <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-800 rounded text-sm">{{ settingsKey }}</kbd>
+                  <kbd class="px-2 py-1 bg-gray-200 dark:bg-oled-black rounded text-sm">{{ settingsKey }}</kbd>
                 </div>
                 <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900">
                   <span class="text-gray-600 dark:text-gray-400">New Chat</span>
-                  <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-800 rounded text-sm">{{ isMac ? '⌘N' : 'Ctrl+N'
+                  <kbd class="px-2 py-1 bg-gray-200 dark:bg-oled-black rounded text-sm">{{ isMac ? '⌘N' : 'Ctrl+N'
                     }}</kbd>
                 </div>
               </div>
@@ -244,7 +246,8 @@ const openExternalLink = (event: MouseEvent) => {
           <!-- Right Column: Models & Start -->
           <div class="space-y-6">
             <!-- Recommended Models -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700"
+            <div
+              class="bg-white dark:bg-oled-black rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700"
               :class="{ 'opacity-50 pointer-events-none': !hasActualKey }">
               <div class="flex items-center gap-3 mb-4">
                 <div class="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
@@ -283,7 +286,8 @@ const openExternalLink = (event: MouseEvent) => {
             </div>
 
             <!-- Start Chat -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700"
+            <div
+              class="bg-white dark:bg-oled-black rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700"
               :class="{ 'opacity-50 pointer-events-none': !hasActualKey }">
               <div class="flex items-center gap-3 mb-4">
                 <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">

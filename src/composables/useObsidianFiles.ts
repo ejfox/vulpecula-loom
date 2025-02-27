@@ -53,13 +53,15 @@ export function useObsidianFiles() {
 
   // Search function
   const searchFiles = async (query: string) => {
-    console.log("Obsidian File Search");
-    console.log("Query:", query);
-    console.log("Has vault:", hasVault.value);
-    console.log("Vault path:", vaultPath.value);
+    console.log("🔎 useObsidianFiles: Search Files Called");
+    console.log("🔎 Query:", query);
+    console.log("🔎 Has vault:", hasVault.value);
+    console.log("🔎 Vault path:", vaultPath.value);
 
     if (!hasVault.value || !query.trim()) {
-      console.log("Returning early - no vault or empty query");
+      console.log(
+        "⚠️ useObsidianFiles: Returning early - no vault or empty query"
+      );
       searchResults.value = [];
       return;
     }
@@ -71,18 +73,28 @@ export function useObsidianFiles() {
         searchTerm: query.trim(),
       };
 
+      console.log(
+        "🔎 useObsidianFiles: Invoking IPC with options:",
+        searchOptions
+      );
       const results = await electron.ipc.invoke(
         "search-obsidian-files",
         searchOptions
       );
+      console.log("🔎 useObsidianFiles: Received results:", results);
+
       if (Array.isArray(results)) {
+        console.log(`✅ useObsidianFiles: Got ${results.length} results`);
         searchResults.value = results;
       } else {
-        console.error("Unexpected search results format:", results);
+        console.error(
+          "❌ useObsidianFiles: Unexpected search results format:",
+          results
+        );
         searchResults.value = [];
       }
     } catch (err) {
-      console.error("Failed to search files:", err);
+      console.error("❌ useObsidianFiles: Failed to search files:", err);
       error.value =
         err instanceof Error ? err.message : "Failed to search files";
       searchResults.value = [];

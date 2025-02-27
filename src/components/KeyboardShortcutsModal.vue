@@ -1,7 +1,8 @@
 <template>
   <Transition name="fade">
     <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+      <div
+        class="relative bg-white dark:bg-oled-black rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
         @click.stop>
         <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="text-xl font-semibold text-gray-800 dark:text-white">Keyboard Shortcuts</h2>
@@ -25,6 +26,16 @@
                   class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600">
                   {{ shortcut.keys }}
                 </kbd>
+              </div>
+            </div>
+          </div>
+          <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Debug & Development</h3>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="text-sm text-gray-700 dark:text-gray-300">Toggle Debug Console</div>
+                <kbd
+                  class="px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-oled-black rounded border border-gray-300 dark:border-gray-700">Alt+L</kbd>
               </div>
             </div>
           </div>

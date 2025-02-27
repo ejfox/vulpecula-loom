@@ -20,8 +20,42 @@ ipcMain.handle(
         console.warn("⚠️ Obsidian Handler: No vault path provided");
         return [];
       }
+
+      // Add debug to verify the path exists
+      const fs = require("fs");
+      const pathExists = fs.existsSync(options.path);
+      console.log(
+        `🔍 Obsidian Handler: Path exists: ${pathExists ? "YES" : "NO"} - ${
+          options.path
+        }`
+      );
+
+      if (!pathExists) {
+        console.error(
+          "❌ Obsidian Handler: Vault path does not exist:",
+          options.path
+        );
+        return [];
+      }
+
+      console.log(
+        `🔍 Obsidian Handler: Searching for term: "${options.searchTerm}"`
+      );
       const results = await searchObsidianFiles(options);
       console.log("✅ Obsidian Handler: Found", results.length, "files");
+
+      // Log the first few results for debugging
+      if (results.length > 0) {
+        console.log(
+          "📄 Sample results:",
+          results.slice(0, 3).map((r) => ({
+            title: r.title,
+            path: r.path,
+            preview: r.preview?.slice(0, 30),
+          }))
+        );
+      }
+
       return results;
     } catch (err) {
       console.error(

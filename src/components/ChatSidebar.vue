@@ -1,14 +1,34 @@
 <template>
-  <aside class="flex flex-col h-full overflow-hidden text-sm bg-white dark:bg-gray-950">
-    <!-- Header -->
-    <div class="px-4 py-3 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 app-drag-region">
-      <h1 class="font-medium text-gray-900 dark:text-white select-none">Vulpecula</h1>
-      <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 select-none">Powered by OpenRouter</p>
+  <aside class="flex flex-col h-full overflow-hidden text-sm bg-white dark:bg-oled-black">
+    <!-- Header - Simplified Version with Safe Constellation Effects -->
+    <div class="celestial-header-simple px-4 py-3 border-b border-gray-200 dark:border-gray-800 app-drag-region"
+      :class="{ 'celestial-header-thinking': isGeneratingSummaries || isAiResponding }">
+      <div class="flex items-center justify-between relative z-10">
+        <h1 class="font-medium text-white dark:text-white select-none">
+          Vulpecula
+        </h1>
+        <img src="https://room302.studio/room302-logo.svg" alt="Room 302 Studio"
+          class="h-5 logo-monochrome select-none" />
+      </div>
+      <!-- Safe constellation animation container -->
+      <div class="constellation-container" v-if="isGeneratingSummaries || isAiResponding">
+        <div class="star-particle s1"></div>
+        <div class="star-particle s2"></div>
+        <div class="star-particle s3"></div>
+        <div class="star-particle s4"></div>
+        <div class="star-particle s5"></div>
+        <div class="star-particle s6"></div>
+        <div class="star-particle s7"></div>
+        <div class="s8"></div>
+        <div class="s9"></div>
+      </div>
+      <!-- Northern lights top bar -->
+      <div class="northern-lights-bar" v-if="isGeneratingSummaries || isAiResponding"></div>
     </div>
 
     <!-- Search and Actions Bar -->
     <div
-      class="sticky top-0 bg-white dark:bg-gray-950 p-3 z-50 border-b border-gray-200 dark:border-gray-800 shadow-sm">
+      class="sticky top-0 bg-white dark:bg-oled-black p-3 z-50 border-b border-gray-200 dark:border-gray-800 shadow-sm">
       <!-- Search Input -->
       <div class="relative mb-2">
         <input v-model="searchQuery" placeholder="Search chats..." class="w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700
@@ -38,9 +58,9 @@
     </div>
 
     <!-- Scrollable Content Area -->
-    <div class="flex-1 overflow-y-auto p-3 space-y-4">
+    <div class="flex-1 overflow-y-auto p-2 space-y-2" :class="{ 'pb-16': tickerVisible }">
       <!-- Loading State -->
-      <div v-if="isGeneratingSummaries" class="flex items-center justify-center py-4 text-gray-500 dark:text-gray-400">
+      <div v-if="isGeneratingSummaries" class="flex items-center justify-center py-3 text-gray-500 dark:text-gray-400">
         <svg class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor"
@@ -52,8 +72,8 @@
 
       <!-- Empty State -->
       <div v-if="filteredChats.length === 0 && !isGeneratingSummaries"
-        class="flex flex-col items-center justify-center py-8 text-center">
-        <svg class="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" viewBox="0 0 24 24"
+        class="flex flex-col items-center justify-center py-6 text-center">
+        <svg class="w-10 h-10 text-gray-300 dark:text-gray-600 mb-2" fill="none" viewBox="0 0 24 24"
           stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
             d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -65,18 +85,18 @@
           {{ searchQuery ? 'Try a different search term' : 'Start a new conversation' }}
         </p>
         <button @click="emit('new-chat')"
-          class="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
+          class="mt-3 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
           Start New Chat
         </button>
       </div>
 
       <!-- Chat List -->
-      <div v-if="filteredChats.length > 0" class="space-y-4 relative">
+      <div v-if="filteredChats.length > 0" class="space-y-2 relative chat-list-container">
         <!-- Threaded Chats -->
-        <div v-for="(chats, threadId) in groupedFilteredChats" :key="threadId" class="space-y-2 relative">
+        <div v-for="(chats, threadId) in groupedFilteredChats" :key="threadId" class="space-y-1.5 relative">
           <!-- Thread Header -->
           <div v-if="threadId !== 'unthreaded' && chats.length > 0"
-            class="px-2 py-1 text-xs font-semibold text-gray-700 dark:text-gray-400 uppercase tracking-wider flex items-center bg-gray-50 dark:bg-gray-900 rounded">
+            class="px-2 py-0.5 text-xs font-semibold text-gray-700 dark:text-gray-400 uppercase tracking-wider flex items-center bg-gray-50 dark:bg-black rounded monospace-text">
             <span class="flex-1">{{ chats[0]?.metadata.thread?.name || 'Untitled Thread' }}</span>
             <span class="text-gray-400 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded-full text-xs">
               {{ chats.length }}
@@ -84,65 +104,48 @@
           </div>
 
           <!-- Chats in Thread -->
-          <TransitionGroup name="chat-list" tag="div" class="space-y-2 relative">
+          <TransitionGroup name="chat-list" tag="div" class="space-y-1.5 relative">
             <div v-for="chat in chats" :key="chat.id"
               class="group flex flex-col rounded-lg overflow-hidden cursor-pointer border dark:border-gray-800 hover:shadow-md transition-all duration-200"
               :class="[
                 currentChatId === chat.id
-                  ? 'border-blue-500 bg-blue-50/50 dark:bg-gray-800/50 ring-1 ring-blue-400/30'
-                  : 'border-gray-200 dark:hover:bg-gray-900/50',
+                  ? 'border-blue-500 bg-blue-50/50 dark:bg-gray-900/50 ring-1 ring-blue-400/30'
+                  : 'border-gray-200 dark:hover:bg-black/70',
                 chat.metadata.fork?.parentId ? 'border-l-2 border-l-blue-500/30' : ''
-              ]" :style="{ marginLeft: `${getIndentLevel(chat) * 12}px` }">
+              ]" :style="{ marginLeft: `${getIndentLevel(chat) * 8}px` }">
 
               <!-- Chat Card Header -->
               <div
-                class="flex items-center px-3 py-2 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800"
+                class="flex items-center px-2 py-1.5 bg-white dark:bg-oled-black border-b border-gray-100 dark:border-gray-800"
                 @click="emit('load-chat', chat.id)">
-
-                <!-- Model Icon/Indicator -->
-                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-2"
-                  :class="getModelBackgroundColor(chat.model)">
-                  <span class="text-white text-xs font-medium">{{ getModelInitials(chat.model) }}</span>
+                <!-- Model Icon -->
+                <div class="flex-shrink-0">
+                  <span class="w-5 h-5 rounded-full flex items-center justify-center"
+                    :class="getModelBackgroundColor(chat.model)">
+                    <div :class="[getModelIcon(chat.model), 'text-white w-3 h-3']"></div>
+                  </span>
                 </div>
 
-                <!-- Title Area -->
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1">
-                    <h3 class="font-medium text-gray-900 dark:text-white truncate">
-                      {{ chat.title || 'Untitled Chat' }}
-                    </h3>
-                    <div v-if="chat.metadata.fork?.parentId"
-                      class="flex-shrink-0 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs font-medium">
-                      Fork
-                    </div>
-                  </div>
-                  <!-- Timestamp -->
-                  <div class="flex items-center text-xs text-gray-500 dark:text-gray-400">
-                    <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {{ formatChatAge(chat.metadata?.lastUpdated || chat.created_at) }}
-                  </div>
+                <!-- Chat Title -->
+                <div class="ml-2 min-w-0 flex-1">
+                  <h3 class="text-sm font-medium text-gray-900 dark:text-white truncate leading-tight">
+                    {{ getChatTitle(chat) }}
+                  </h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 monospace-text">
+                    <span>{{ formatDate(chat.metadata?.lastUpdated) }}</span>
+                    <span class="mx-1.5">·</span>
+                    <span>{{ chat.metadata?.messageCount || 0 }} {{ chat.metadata?.messageCount === 1 ? 'message' :
+                      'messages' }}</span>
+                  </p>
                 </div>
 
-                <!-- Stats & Actions -->
-                <div class="flex-shrink-0 flex items-center gap-2">
-                  <!-- Message Count Badge -->
-                  <div
-                    class="flex items-center px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-600 dark:text-gray-400">
-                    <svg class="w-3 h-3 mr-1 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    {{ getMessageCounts(chat).total }}
-                  </div>
-
+                <!-- Chat Actions -->
+                <div class="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1 ml-2">
                   <!-- Actions Menu -->
                   <div class="relative">
                     <button @click.stop="activeDropdown = activeDropdown === chat.id ? null : chat.id"
-                      class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      class="p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors">
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                       </svg>
@@ -150,20 +153,20 @@
 
                     <!-- Dropdown Menu -->
                     <div v-if="activeDropdown === chat.id"
-                      class="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                      class="absolute right-0 mt-1 w-40 bg-white dark:bg-oled-black rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-50 text-xs">
                       <div class="py-1">
                         <button @click.stop="regenerateSummary(chat)"
-                          class="w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-left flex items-center">
-                          <svg class="w-4 h-4 mr-2 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
+                          class="w-full px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900 text-left flex items-center">
+                          <svg class="w-3.5 h-3.5 mr-1.5 text-gray-500 dark:text-gray-400" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                           </svg>
                           Regenerate Summary
                         </button>
-                        <button @click.stop="emit('delete-chat', chat.id)"
-                          class="w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 text-left flex items-center">
-                          <svg class="w-4 h-4 mr-2 text-red-500 dark:text-red-400" fill="none" viewBox="0 0 24 24"
+                        <button @click.stop="confirmDelete(chat.id)"
+                          class="w-full px-3 py-1.5 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-900 text-left flex items-center">
+                          <svg class="w-3.5 h-3.5 mr-1.5 text-red-500 dark:text-red-400" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -176,45 +179,90 @@
                 </div>
               </div>
 
-              <!-- Chat Summary -->
-              <div class="px-3 py-2 bg-white dark:bg-gray-950" @click="emit('load-chat', chat.id)">
-                <div v-if="isSummaryLoading(chat.id)"
-                  class="flex items-center text-gray-500 dark:text-gray-400 text-xs">
-                  <div class="animate-pulse w-full h-4 bg-gray-200 dark:bg-gray-800 rounded"></div>
+              <!-- Chat Summary (more compact) -->
+              <div class="px-2 py-1.5 bg-white dark:bg-oled-black text-xs" @click="emit('load-chat', chat.id)">
+                <div v-if="isSummaryLoading(chat.id)" class="flex items-center text-gray-500 dark:text-gray-400">
+                  <div class="animate-pulse w-full h-3 bg-gray-200 dark:bg-gray-800 rounded"></div>
                 </div>
-                <div v-else-if="chatSummaries[chat.id]" class="text-gray-700 dark:text-gray-300 text-sm">
-                  <p>{{ chatSummaries[chat.id] }}</p>
+                <div v-else-if="chatSummaries[chat.id]" class="text-gray-700 dark:text-gray-300 line-clamp-2">
+                  {{ chatSummaries[chat.id] }}
                 </div>
-                <div v-else class="text-gray-500 dark:text-gray-500 text-xs italic">
+                <div v-else class="text-gray-500 dark:text-gray-500 italic">
                   No summary available
                 </div>
               </div>
 
-              <!-- Chat Footer/Stats -->
-              <div
-                class="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-3"
-                @click="emit('load-chat', chat.id)">
-                <!-- Model Used -->
-                <div class="flex items-center" :class="getModelColor(chat.model)">
-                  <span class="font-medium">{{ getModelDisplayName(chat.model) }}</span>
+              <!-- Chat Card Footer -->
+              <div class="flex items-center justify-between px-2 py-1 text-xs bg-gray-50 dark:bg-oled-black">
+                <!-- Models Summary Button -->
+                <div class="flex items-center cursor-pointer model-dropdown-trigger" :data-chat-id="chat.id"
+                  @click.stop="toggleModelsDropdown(chat.id)">
+                  <!-- Show model icons in a compact way -->
+                  <div class="flex -space-x-1 mr-1">
+                    <span v-for="(model, idx) in getTopModels(chat).slice(0, 2)" :key="idx"
+                      class="w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0 border border-gray-50 dark:border-black"
+                      :class="model.bgColor">
+                      <div :class="[model.icon, 'text-white w-2 h-2']"></div>
+                    </span>
+                  </div>
+                  <span class="font-medium text-xs truncate max-w-[80px] monospace-text"
+                    :class="getTopModels(chat)[0]?.color">
+                    {{ getModelDisplayName(getTopModels(chat)[0]?.id || chat.model) }}
+                    <span v-if="getTopModels(chat).length > 1" class="text-gray-400 dark:text-gray-500 ml-0.5">+{{
+                      getTopModels(chat).length - 1 }}</span>
+                  </span>
+                  <svg class="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+
+                <!-- Models Dropdown -->
+                <div v-if="activeModelsDropdown === chat.id && getTopModels(chat).length > 1"
+                  class="fixed z-20 bg-white dark:bg-oled-black shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 p-2 text-xs"
+                  :style="getDropdownPosition(chat.id)" @click.stop>
+                  <div
+                    class="font-medium mb-1.5 text-gray-500 dark:text-gray-400 uppercase tracking-wide text-xs monospace-text">
+                    MODELS USED
+                  </div>
+                  <div class="space-y-1.5">
+                    <div v-for="(model, idx) in getTopModels(chat)" :key="idx"
+                      class="grid grid-cols-3 gap-1 items-center">
+                      <!-- Model Icon & Name Column -->
+                      <div class="flex items-center gap-1 min-w-0" :class="model.color">
+                        <span class="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                          :class="model.bgColor">
+                          <div :class="[model.icon, 'text-white w-2.5 h-2.5']"></div>
+                        </span>
+                        <span class="font-medium truncate text-xs monospace-text">{{ getModelDisplayName(model.id)
+                        }}</span>
+                      </div>
+
+                      <!-- Message Count Column -->
+                      <div class="text-center">
+                        <span class="text-gray-500 dark:text-gray-400 text-xs monospace-text">{{ model.count }} {{
+                          model.count === 1 ?
+                            'msg' : 'msgs' }}</span>
+                      </div>
+
+                      <!-- Progress Bar Column -->
+                      <div class="flex justify-end">
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+                          <div class="h-1 rounded-full" :class="model.bgColor" :style="{
+                            width: `${(model.count / getTotalMessages(chat)) * 100}%`
+                          }"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Has Images/Documents indicator -->
                 <div v-if="hasAttachments(chat)" class="flex items-center">
-                  <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="w-3 h-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span>Media</span>
-                </div>
-
-                <!-- Token Stats -->
-                <div class="flex items-center ml-auto">
-                  <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span class="tabular-nums font-medium">{{ formatNumber(getTokenStats(chat).tokens) }}</span>
+                  <span class="text-xs">Media</span>
                 </div>
               </div>
             </div>
@@ -234,9 +282,21 @@ import logger from '../lib/logger'
 import ChatImport from './ChatImport.vue'
 import { formatDistanceToNow } from 'date-fns'
 
+// Preload the Monaspace Neon font to avoid FOIT (Flash of Invisible Text)
+const preloadFont = () => {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.href = 'https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Regular.woff';
+  link.as = 'font';
+  link.type = 'font/woff';
+  link.crossOrigin = 'anonymous';
+  document.head.appendChild(link);
+}
+
 const props = defineProps<{
   chatHistory: Chat[]
   currentChatId: string | null
+  isAiResponding?: boolean // New prop to track when AI is actively responding
 }>()
 
 const emit = defineEmits(['new-chat', 'load-chat', 'delete-chat', 'rename-chat'])
@@ -246,6 +306,22 @@ const chatSummaries = ref<Record<string, string>>({})
 const summaryLoadingIds = ref<Set<string>>(new Set())
 const isGeneratingSummaries = ref(false)
 const searchQuery = ref('')
+
+// Add state for log ticker visibility
+const tickerVisible = ref(localStorage.getItem('logTickerShow') !== 'false')
+
+// Storage event handler
+const handleStorageChange = (e: StorageEvent) => {
+  if (e.key === 'logTickerShow') {
+    tickerVisible.value = e.newValue !== 'false'
+  }
+}
+
+// Custom event handler
+const handleTickerVisibilityChange = ((e: Event) => {
+  const customEvent = e as CustomEvent
+  tickerVisible.value = customEvent.detail?.visible || false
+}) as EventListener
 
 // Filtered chats based on search
 const filteredChats = computed(() => {
@@ -500,26 +576,152 @@ const getModelBackgroundColor = (modelId: string): string => {
   return 'bg-gray-500'
 }
 
+// Get the icon for a model provider
+const getModelIcon = (modelId: string): string => {
+  const provider = modelId.split('/')[0]
+
+  // Map provider to icon
+  switch (provider) {
+    case 'anthropic':
+      return 'i-ri-anthropic-fill'
+    case 'openai':
+      return 'i-ri-openai-fill'
+    case 'google':
+      return 'i-ri-google-fill'
+    case 'meta':
+      return 'i-ri-meta-fill'
+    case 'mistral':
+      return 'i-ri-terminal-box-fill' // Placeholder for Mistral
+    case 'groq':
+      return 'i-ri-rocket-2-fill' // Placeholder for Groq
+    case 'cohere':
+      return 'i-ri-bubble-chart-fill' // Placeholder for Cohere
+    default:
+      return 'i-ri-robot-fill' // Generic AI icon for unknown providers
+  }
+}
+
 // Add ref for active dropdown
 const activeDropdown = ref<string | null>(null)
+const activeModelsDropdown = ref<string | null>(null)
 
-// Add click outside handler
+// Add this to store dropdown trigger element positions
+const dropdownTriggers = ref<Map<string, DOMRect>>(new Map())
+
+// Add formatNumber function using Intl.NumberFormat API
+const formatNumber = (num: number) => {
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(num);
+}
+
+// Function to get dropdown position
+const getDropdownPosition = (chatId: string) => {
+  const rect = dropdownTriggers.value.get(chatId)
+  if (!rect) {
+    // Fallback: find the trigger element and get its position
+    const triggerElement = document.querySelector(`.model-dropdown-trigger[data-chat-id="${chatId}"]`);
+    if (triggerElement) {
+      const newRect = triggerElement.getBoundingClientRect();
+      dropdownTriggers.value.set(chatId, newRect);
+      return {
+        left: `${newRect.left}px`,
+        top: `${newRect.bottom + 5}px`,
+        maxWidth: '280px'
+      };
+    }
+    return { left: '0px', top: '0px', maxWidth: '280px' }
+  }
+
+  return {
+    left: `${rect.left}px`,
+    top: `${rect.bottom + 5}px`,
+    maxWidth: '280px'
+  }
+}
+
+// Update click outside handler
 onMounted(() => {
+  // Preload Monaspace font
+  preloadFont();
+
   // Generate summaries for visible chats
-  generateAllSummaries()
+  console.log('ChatSidebar mounted - attempting to generate summaries');
+  generateAllSummaries();
+
+  // Check for chats that need titles
+  console.log('Checking for auto titles for', props.chatHistory.length, 'chats');
+  props.chatHistory.forEach(chat => {
+    checkForAutoTitle(chat);
+  });
+
+  // Create a mutation observer to track when chat items are added or removed
+  const observer = new MutationObserver(() => {
+    // Update positions of dropdown triggers
+    console.log('DOM mutation detected - updating dropdown positions');
+    document.querySelectorAll('.model-dropdown-trigger').forEach((el) => {
+      const chatId = el.getAttribute('data-chat-id');
+      if (chatId) {
+        dropdownTriggers.value.set(chatId, el.getBoundingClientRect());
+      }
+    });
+  });
+
+  // Start observing the chat list container
+  const chatListContainer = document.querySelector('.chat-list-container');
+  if (chatListContainer) {
+    console.log('Found chat list container - setting up observer');
+    observer.observe(chatListContainer, { childList: true, subtree: true });
+  } else {
+    console.warn('Could not find chat list container for observer');
+  }
 
   const handleClickOutside = (e: MouseEvent) => {
     if (activeDropdown.value) {
       activeDropdown.value = null
     }
+
+    // Only close the models dropdown if the click wasn't on the trigger
+    if (activeModelsDropdown.value) {
+      const target = e.target as HTMLElement
+      if (!target.closest('.model-dropdown-trigger')) {
+        activeModelsDropdown.value = null
+      }
+    }
   }
+
   document.addEventListener('click', handleClickOutside)
+
+  // Update watch for activeModelsDropdown to ensure positions are updated
+  watch(activeModelsDropdown, (newValue) => {
+    if (newValue) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        // Find all trigger elements and update their positions
+        document.querySelectorAll('.model-dropdown-trigger').forEach((el) => {
+          const chatId = el.getAttribute('data-chat-id')
+          if (chatId) {
+            dropdownTriggers.value.set(chatId, el.getBoundingClientRect())
+          }
+        })
+      }, 10);
+    }
+  })
+
+  // Add event listeners for ticker visibility
+  window.addEventListener('storage', handleStorageChange)
+  window.addEventListener('logticker-visibility-changed', handleTickerVisibilityChange)
+
   onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside)
+    observer.disconnect()
+    window.removeEventListener('storage', handleStorageChange)
+    window.removeEventListener('logticker-visibility-changed', handleTickerVisibilityChange)
   })
 })
 
-// Watch for changes in chat history to update summaries
+// Watch for changes in chat history to update summaries and titles
 watch(() => props.chatHistory, async (newHistory, oldHistory) => {
   if (newHistory.length !== oldHistory?.length) {
     // Check if there are any chats without summaries
@@ -530,19 +732,23 @@ watch(() => props.chatHistory, async (newHistory, oldHistory) => {
     if (unsummarizedChats.length > 0) {
       await generateAllSummaries()
     }
+
+    // Check for chats needing title generation
+    newHistory.forEach(chat => {
+      checkForAutoTitle(chat)
+    })
+  } else {
+    // Messages might have been added to existing chats, check if any need titles
+    for (let i = 0; i < newHistory.length; i++) {
+      const newChat = newHistory[i]
+      const oldChat = oldHistory?.[i]
+
+      if (newChat && oldChat && newChat.messages.length !== oldChat.messages.length) {
+        checkForAutoTitle(newChat)
+      }
+    }
   }
 }, { deep: true })
-
-// Helper function for number formatting
-const formatNumber = (num: number): string => {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M'
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K'
-  }
-  return num.toString()
-}
 
 // Helper function for message counts
 const getMessageCounts = (chat: Chat) => {
@@ -551,15 +757,6 @@ const getMessageCounts = (chat: Chat) => {
     human: messages.filter(m => m.role === 'user').length,
     ai: messages.filter(m => m.role === 'assistant').length,
     total: messages.length
-  }
-}
-
-// Helper function for token stats
-const getTokenStats = (chat: Chat) => {
-  const stats = chat.metadata?.stats || { promptTokens: 0, completionTokens: 0, cost: 0 }
-  return {
-    tokens: (stats.promptTokens || 0) + (stats.completionTokens || 0),
-    cost: stats.cost || 0
   }
 }
 
@@ -592,15 +789,32 @@ const parseModelCommands = (content: string) => {
  */
 const checkForAutoTitle = (chat: Chat) => {
   // Only suggest retitling if:
-  // 1. Chat has at least 5 messages
+  // 1. Chat has enough messages (at least 5)
   // 2. Chat title is "New Chat" or "Untitled" or null
   // 3. We haven't already generated a title recently
 
   const defaultTitles = ['new chat', 'untitled chat', 'untitled', '']
   const hasDefaultTitle = !chat.title || defaultTitles.includes(chat.title.toLowerCase())
 
-  if (chat.messages.length >= 5 && hasDefaultTitle) {
-    // We'd generate a title here
+  // Check if we've already tried to generate a title in the last hour
+  let lastTitleAttemptTime = 0
+  // Use type assertion to avoid type errors
+  const autoTitle = chat.metadata.autoTitle as { value?: string, lastGeneratedAt?: string } | undefined
+
+  if (autoTitle && autoTitle.lastGeneratedAt) {
+    lastTitleAttemptTime = new Date(autoTitle.lastGeneratedAt).getTime()
+  }
+
+  const oneHourAgo = Date.now() - (60 * 60 * 1000)
+  const canGenerateAgain = lastTitleAttemptTime === 0 || lastTitleAttemptTime < oneHourAgo
+
+  // Generate title at message thresholds: 5 messages, 10 messages, or every 20 messages
+  const atThreshold = chat.messages.length === 5 ||
+    chat.messages.length === 10 ||
+    chat.messages.length % 20 === 0
+
+  if (chat.messages.length >= 5 && hasDefaultTitle && canGenerateAgain && atThreshold) {
+    logger.debug('Auto-generating title for chat', { chatId: chat.id, messageCount: chat.messages.length })
     generateTitleForChat(chat)
   }
 }
@@ -612,10 +826,11 @@ const generateTitleForChat = async (chat: Chat) => {
   try {
     const messages = chat.messages.slice(0, Math.min(chat.messages.length, 10))
 
-    // Create a prompt for title generation
+    // Create a prompt for title generation that specifically asks for 1-4 words
     const titlePrompt = `
-      Please create a very brief title (max 40 characters) for this conversation.
-      Make it descriptive but concise.
+      Create a VERY concise title (1-4 words only) for this conversation.
+      The title should capture the essence of the conversation topic.
+      Return ONLY the title with no quotes, explanations, or additional text.
 
       ${messages
         .map(
@@ -656,6 +871,17 @@ const generateTitleForChat = async (chat: Chat) => {
     const data = await response.json()
     const suggestedTitle = data.choices[0].message.content.trim()
 
+    // Update the chat metadata to record that we attempted to generate a title
+    try {
+      const store = useStore()
+      await store.set(`chat-metadata-${chat.id}-autoTitle` as any, {
+        value: suggestedTitle,
+        lastGeneratedAt: new Date().toISOString()
+      })
+    } catch (storeError) {
+      logger.error('Failed to save title generation metadata', { chatId: chat.id, error: storeError })
+    }
+
     // For now, just emit an event to suggest a title change
     // In a full implementation, you'd show a UI element asking the user
     // if they want to apply this title
@@ -666,6 +892,78 @@ const generateTitleForChat = async (chat: Chat) => {
   } catch (error) {
     logger.error("Failed to generate title", error)
   }
+}
+
+// Get the top 3 most used models in a chat
+const getTopModels = (chat: Chat) => {
+  // Count model usage
+  const modelCounts: Record<string, number> = {}
+
+  // Count models from messages
+  chat.messages.forEach(message => {
+    if (message.model) {
+      modelCounts[message.model] = (modelCounts[message.model] || 0) + 1
+    }
+  })
+
+  // If we don't have any models in messages, use the chat.model as default
+  if (Object.keys(modelCounts).length === 0 && chat.model) {
+    modelCounts[chat.model] = 1
+  }
+
+  // Sort models by usage count (descending)
+  const sortedModels = Object.entries(modelCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5) // Get top 5 for the dropdown
+    .map(([model, count]) => ({
+      id: model,
+      count,
+      initials: getModelInitials(model),
+      icon: getModelIcon(model),
+      color: getModelColor(model),
+      bgColor: getModelBackgroundColor(model)
+    }))
+
+  return sortedModels
+}
+
+// Get total number of messages with identified models
+const getTotalMessages = (chat: Chat) => {
+  let total = 0
+  const counts = getTopModels(chat)
+  counts.forEach(model => {
+    total += model.count
+  })
+  return total || 1 // Avoid division by zero
+}
+
+// Helper function to get a clean title
+const getChatTitle = (chat: Chat) => {
+  return chat.title || 'Untitled Chat'
+}
+
+// Format date for display
+const formatDate = (dateString: string | undefined) => {
+  if (!dateString) return 'Unknown date'
+  const date = new Date(dateString)
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+  })
+}
+
+// Confirm delete action
+const confirmDelete = (chatId: string) => {
+  // This could be enhanced with a modal confirmation
+  if (confirm('Are you sure you want to delete this chat?')) {
+    emit('delete-chat', chatId)
+  }
+}
+
+// Toggle models dropdown
+const toggleModelsDropdown = (chatId: string) => {
+  activeModelsDropdown.value = activeModelsDropdown.value === chatId ? null : chatId
 }
 </script>
 
@@ -680,12 +978,312 @@ const generateTitleForChat = async (chat: Chat) => {
 .chat-list-enter-from,
 .chat-list-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateY(-10px);
 }
 
-.chat-list-leave-active {
+.chat-list-move {
+  transition: transform 0.5s ease;
+}
+
+/* Import Monaspace Neon font from GitHub with proper fallbacks */
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.000/fonts/webfonts/MonaspaceNeon-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Apply monospace font to elements with proper fallbacks */
+.monospace-text {
+  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  letter-spacing: -0.02em;
+  font-feature-settings: "calt" 1, "liga" 1;
+}
+
+/* Base header styling */
+.celestial-header-simple {
+  @apply bg-gradient-to-r from-purple-700 to-indigo-800 overflow-hidden relative;
+  height: 52px;
+}
+
+/* Dark mode true OLED black version */
+.dark .celestial-header-simple {
+  background: #000000;
+  /* True OLED black */
+  border-bottom-color: rgba(75, 85, 99, 0.5);
+}
+
+/* Modified header state when thinking/generating */
+.celestial-header-thinking {
+  @apply bg-gradient-to-r from-purple-800 to-indigo-900;
+}
+
+/* Dark mode thinking state with subtle gradient even on OLED black */
+.dark .celestial-header-thinking {
+  background: linear-gradient(90deg, #000000, #030303, #000000);
+}
+
+/* Northern lights bar animation - only shown during thinking state */
+.northern-lights-bar {
   position: absolute;
-  width: calc(100% - 1.5rem);
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(to right,
+      rgba(94, 114, 235, 0),
+      rgba(94, 114, 235, 0.5),
+      rgba(37, 206, 222, 0.8),
+      rgba(123, 231, 174, 0.5),
+      rgba(94, 114, 235, 0));
+  animation: aurora 4s ease-in-out infinite alternate;
+  opacity: 0.8;
+  z-index: 5;
+}
+
+/* Northern lights flowing gradient overlay */
+.constellation-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg,
+      rgba(94, 114, 235, 0) 0%,
+      rgba(94, 114, 235, 0.03) 25%,
+      rgba(37, 206, 222, 0.05) 50%,
+      rgba(123, 231, 174, 0.03) 75%,
+      rgba(94, 114, 235, 0) 100%);
+  background-size: 400% 400%;
+  animation: northernLights 15s ease infinite;
+  opacity: 0.4;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Dark mode adjustment for the northern lights */
+.dark .constellation-container::before {
+  opacity: 0.15;
+  background: linear-gradient(45deg,
+      rgba(94, 114, 235, 0) 0%,
+      rgba(94, 114, 235, 0.04) 25%,
+      rgba(37, 206, 222, 0.08) 50%,
+      rgba(123, 231, 174, 0.04) 75%,
+      rgba(94, 114, 235, 0) 100%);
+}
+
+/* Star particles */
+.constellation-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.star-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 1;
+  opacity: 0;
+  /* Start invisible for fade in */
+}
+
+/* Star positions and animations with varied cycles */
+.s1 {
+  top: 20%;
+  left: 10%;
+  animation: fadeInOutTwinkle 8s ease-in-out infinite;
+  animation-delay: 0.5s;
+}
+
+.s2 {
+  top: 30%;
+  left: 25%;
+  animation: fadeInOutTwinkle 7s ease-in-out infinite;
+  animation-delay: 1.2s;
+}
+
+.s3 {
+  top: 15%;
+  left: 50%;
+  animation: fadeInOutTwinkle 9s ease-in-out infinite;
+  animation-delay: 0.8s;
+}
+
+.s4 {
+  top: 40%;
+  left: 70%;
+  animation: fadeInOutTwinkle 6.5s ease-in-out infinite;
+  animation-delay: 2.1s;
+}
+
+.s5 {
+  top: 25%;
+  left: 85%;
+  animation: fadeInOutTwinkle 8.5s ease-in-out infinite;
+  animation-delay: 1.5s;
+}
+
+.s6 {
+  top: 35%;
+  left: 40%;
+  animation: fadeInOutTwinkle 7.8s ease-in-out infinite;
+  animation-delay: 0.3s;
+}
+
+.s7 {
+  top: 45%;
+  left: 60%;
+  animation: fadeInOutTwinkle 9.2s ease-in-out infinite;
+  animation-delay: 1.7s;
+}
+
+/* Additional stars for more cosmic depth */
+.constellation-container .s8 {
+  position: absolute;
+  top: 12%;
+  left: 35%;
+  width: 1px;
+  height: 1px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.7);
+  z-index: 1;
+  animation: fadeInOutTwinkle 7.3s ease-in-out infinite;
+  animation-delay: 2.7s;
+}
+
+.constellation-container .s9 {
+  position: absolute;
+  top: 38%;
+  left: 15%;
+  width: 1px;
+  height: 1px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.7);
+  z-index: 1;
+  animation: fadeInOutTwinkle 6.9s ease-in-out infinite;
+  animation-delay: 3.2s;
+}
+
+/* Make dark mode stars more visible against true black */
+.dark .star-particle,
+.dark .constellation-container .s8,
+.dark .constellation-container .s9 {
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+/* Complete fade-in, twinkle, fade-out animation */
+@keyframes fadeInOutTwinkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+
+  15% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+
+  65% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+/* Northern lights flowing animation */
+@keyframes northernLights {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Animation keyframes */
+@keyframes twinkle {
+  0% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes aurora {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Light mode overrides */
+:global(.light) .celestial-header-simple {
+  background: #c9d6ff;
+}
+
+:global(.light) .celestial-header-thinking {
+  background: #d8e1ff;
+}
+
+:global(.light) .celestial-header-simple h1 {
+  color: #2a365c;
+}
+
+:global(.light) .star-particle {
+  background-color: rgba(42, 54, 92, 0.6);
+}
+
+:global(.light) .star-particle::after {
+  background-color: rgba(42, 54, 92, 0.1);
+}
+
+:global(.light) .northern-lights-bar {
+  background: linear-gradient(to right,
+      rgba(94, 114, 235, 0),
+      rgba(94, 114, 235, 0.3),
+      rgba(37, 120, 222, 0.5),
+      rgba(94, 114, 235, 0.3),
+      rgba(94, 114, 235, 0));
+  opacity: 0.6;
 }
 
 /* Basic scrollbar styling */
@@ -707,7 +1305,7 @@ const generateTitleForChat = async (chat: Chat) => {
   border-radius: 2px;
 }
 
-/* Add app drag region */
+/* App drag region */
 .app-drag-region {
   -webkit-app-region: drag;
   app-region: drag;
@@ -719,5 +1317,39 @@ const generateTitleForChat = async (chat: Chat) => {
 .app-drag-region select {
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+/* Monochrome filter for the logo */
+.logo-monochrome {
+  filter: grayscale(100%) brightness(0.8) contrast(1.2);
+  opacity: 0.85;
+  transition: opacity 0.2s ease-in-out;
+  position: relative;
+  z-index: 2;
+}
+
+.logo-monochrome:hover {
+  opacity: 1;
+}
+
+/* Dark mode adjustments */
+:global(.dark) .logo-monochrome {
+  filter: grayscale(100%) brightness(1.5) contrast(0.8);
+  opacity: 0.7;
+}
+
+/* Global styles for dark mode with true OLED black */
+:global(.dark) {
+  --true-black: #000000;
+}
+
+:global(.dark) .bg-black {
+  background-color: #000000 !important;
+  /* True OLED black */
+}
+
+:global(.dark) .border-black {
+  border-color: #000000 !important;
+  /* True OLED black */
 }
 </style>

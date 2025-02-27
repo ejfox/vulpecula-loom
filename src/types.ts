@@ -156,6 +156,7 @@ export interface ObsidianFile {
   title: string;
   path: string;
   content?: string;
+  preview?: string;
 }
 
 export interface OpenRouterResponse {
@@ -176,4 +177,12 @@ export interface StoreSchema {
   enabledModelIds: string[];
   recentModelIds: string[];
   "preferred-vision-model": string | null;
+  "remember-window-state": boolean;
+  "minimize-to-tray": boolean;
+  "show-notifications": boolean;
+  "play-sounds": boolean;
+  "show-badge-count": boolean;
+  "show-progress-bar": boolean;
+  "show-only-pinned-models": boolean;
+  "obsidian-vault-path": string;
 }

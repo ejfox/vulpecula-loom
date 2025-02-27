@@ -1,8 +1,8 @@
 <template>
   <div v-if="!isAuthenticated"
-    class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+    class="absolute inset-0 bg-oled-black/50 backdrop-blur-sm flex items-center justify-center z-50">
     <div
-      class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full mx-4 transform transition-all duration-300 ease-out">
+      class="bg-white dark:bg-oled-black p-8 rounded-lg shadow-xl max-w-md w-full mx-4 transform transition-all duration-300 ease-out">
       <!-- Logo/Branding -->
       <div class="text-center mb-8">
         <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Welcome to Vulpecula</h2>

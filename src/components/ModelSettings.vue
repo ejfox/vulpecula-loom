@@ -10,22 +10,24 @@
       </div>
 
       <!-- Model Comparison Section (shows when 2 models are selected) -->
-      <div v-if="comparisonModels.length === 2" class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mb-4">
+      <div v-if="comparisonModels.length === 2"
+        class="bg-gray-50 dark:bg-black/30 rounded-lg p-4 mb-4 border dark:border-gray-800">
         <div class="flex justify-between items-center mb-3">
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Model Comparison</h4>
           <button @click="clearComparison" class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-300">
             Clear Comparison
           </button>
         </div>
-        
+
         <div class="grid grid-cols-2 gap-4">
-          <div v-for="model in comparisonModels" :key="model.id" class="relative">
+          <div v-for="model in comparisonModels" :key="model.id"
+            class="relative p-2 rounded-lg dark:bg-black/40 border dark:border-gray-800">
             <ModelMetadata :model="model" :compact="false" />
           </div>
         </div>
-        
+
         <!-- Comparison Table -->
-        <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+        <div class="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
@@ -44,20 +46,24 @@
               <!-- Input Cost -->
               <tr>
                 <td class="py-1.5 font-medium">Input Cost</td>
-                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[0].pricing?.prompt) }">
+                <td class="py-1.5"
+                  :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[0].pricing?.prompt) }">
                   {{ formatSinglePrice(comparisonModels[0].pricing?.prompt) }}
                 </td>
-                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[1].pricing?.prompt) }">
+                <td class="py-1.5"
+                  :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[1].pricing?.prompt) }">
                   {{ formatSinglePrice(comparisonModels[1].pricing?.prompt) }}
                 </td>
               </tr>
               <!-- Output Cost -->
               <tr>
                 <td class="py-1.5 font-medium">Output Cost</td>
-                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[0].pricing?.completion) }">
+                <td class="py-1.5"
+                  :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[0].pricing?.completion) }">
                   {{ formatSinglePrice(comparisonModels[0].pricing?.completion) }}
                 </td>
-                <td class="py-1.5" :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[1].pricing?.completion) }">
+                <td class="py-1.5"
+                  :class="{ 'text-green-600 dark:text-green-400': isPricingFree(comparisonModels[1].pricing?.completion) }">
                   {{ formatSinglePrice(comparisonModels[1].pricing?.completion) }}
                 </td>
               </tr>
@@ -105,7 +111,8 @@
               <tr>
                 <td class="py-1.5 font-medium">Function Calling</td>
                 <td class="py-1.5">
-                  <span v-if="comparisonModels[0].capabilities?.function_calling" class="text-green-600 dark:text-green-400">
+                  <span v-if="comparisonModels[0].capabilities?.function_calling"
+                    class="text-green-600 dark:text-green-400">
                     <i class="i-carbon-checkmark mr-1"></i> Yes
                   </span>
                   <span v-else class="text-red-600 dark:text-red-400">
@@ -113,7 +120,8 @@
                   </span>
                 </td>
                 <td class="py-1.5">
-                  <span v-if="comparisonModels[1].capabilities?.function_calling" class="text-green-600 dark:text-green-400">
+                  <span v-if="comparisonModels[1].capabilities?.function_calling"
+                    class="text-green-600 dark:text-green-400">
                     <i class="i-carbon-checkmark mr-1"></i> Yes
                   </span>
                   <span v-else class="text-red-600 dark:text-red-400">
@@ -128,25 +136,24 @@
 
       <!-- Pinned Models Grid -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div v-for="model in pinnedModels" :key="model.id" class="relative">
+        <div v-for="(model, index) in pinnedModels" :key="model.id" class="relative"
+          :class="{ 'bg-gray-50 dark:bg-gray-900/20 rounded-lg': index % 2 === 0 }">
           <ModelMetadata :model="model" :compact="true" />
           <div class="absolute top-2 right-2 flex gap-1">
             <!-- Compare Button -->
-            <button @click="toggleModelComparison(model)" 
-              :class="[
-                'p-1 rounded-full transition-colors',
-                isModelInComparison(model.id)
-                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
-                  : 'bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
-              ]"
-              :disabled="comparisonModels.length >= 2 && !isModelInComparison(model.id)">
+            <button @click="toggleModelComparison(model)" :class="[
+              'p-1 rounded-full transition-colors',
+              isModelInComparison(model.id)
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                : 'bg-white dark:bg-black text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+            ]" :disabled="comparisonModels.length >= 2 && !isModelInComparison(model.id)">
               <span class="sr-only">Compare model</span>
               <i class="i-carbon-compare w-4 h-4" />
             </button>
-            
+
             <!-- Unpin Button -->
-            <button @click="unpinModel(model.id)" 
-              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-white dark:bg-gray-800 rounded-full">
+            <button @click="unpinModel(model.id)"
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-white dark:bg-black rounded-full">
               <span class="sr-only">Unpin model</span>
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -159,13 +166,13 @@
       <!-- Enhanced Search and Filter Controls -->
       <div class="mt-6 space-y-4">
         <!-- Quick Comparison Tip -->
-        <div v-if="comparisonModels.length === 0 || comparisonModels.length === 1" 
-             class="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center">
+        <div v-if="comparisonModels.length === 0 || comparisonModels.length === 1"
+          class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center border dark:border-amber-900/30">
           <i class="i-carbon-compare mr-2 w-4 h-4"></i>
           <span>
-            <strong>Quick Compare:</strong> 
-            {{ comparisonModels.length === 0 
-              ? 'Click the compare icon on any two models to see them side by side' 
+            <strong>Quick Compare:</strong>
+            {{ comparisonModels.length === 0
+              ? 'Click the compare icon on any two models to see them side by side'
               : 'Select one more model to compare with ' + getModelDisplayName(comparisonModels[0].id) }}
           </span>
         </div>
@@ -178,8 +185,7 @@
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <input v-model="searchQuery" type="text" placeholder="Search models by name, provider, or features..." 
-                 class="w-full pl-10 pr-12 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg 
+          <input v-model="searchQuery" type="text" placeholder="Search models by name, provider, or features..." class="w-full pl-10 pr-12 py-2.5 bg-white dark:bg-black border border-gray-300 dark:border-gray-700 rounded-lg 
                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" />
           <div class="absolute inset-y-0 right-0 flex items-center pr-3">
             <span v-if="searchQuery" class="text-xs text-blue-500 dark:text-blue-400 font-medium">
@@ -190,48 +196,44 @@
 
         <!-- Filter Tags -->
         <div class="flex flex-wrap gap-2">
-          <button @click="toggleFilter('vision')" 
-                  :class="[
-                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
-                    activeFilters.includes('vision') 
-                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' 
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                  ]">
+          <button @click="toggleFilter('vision')" :class="[
+            'px-2 py-1 text-xs font-medium rounded-full transition-colors border',
+            activeFilters.includes('vision')
+              ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 border-purple-200 dark:border-purple-800'
+              : 'bg-gray-100 text-gray-700 dark:bg-black dark:text-gray-300 dark:border-gray-700'
+          ]">
             <i class="i-carbon-camera mr-1 w-3 h-3"></i>
             Vision
           </button>
-          <button @click="toggleFilter('tools')" 
-                  :class="[
-                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
-                    activeFilters.includes('tools') 
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' 
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                  ]">
+          <button @click="toggleFilter('tools')" :class="[
+            'px-2 py-1 text-xs font-medium rounded-full transition-colors border',
+            activeFilters.includes('tools')
+              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-800'
+              : 'bg-gray-100 text-gray-700 dark:bg-black dark:text-gray-300 dark:border-gray-700'
+          ]">
             <i class="i-carbon-tools mr-1 w-3 h-3"></i>
             Tools
           </button>
-          <button @click="toggleFilter('function_calling')" 
-                  :class="[
-                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
-                    activeFilters.includes('function_calling') 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                  ]">
+          <button @click="toggleFilter('function_calling')" :class="[
+            'px-2 py-1 text-xs font-medium rounded-full transition-colors border',
+            activeFilters.includes('function_calling')
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-200 dark:border-green-800'
+              : 'bg-gray-100 text-gray-700 dark:bg-black dark:text-gray-300 dark:border-gray-700'
+          ]">
             <i class="i-carbon-function mr-1 w-3 h-3"></i>
             Function Calling
           </button>
-          <button @click="toggleFilter('free')" 
-                  :class="[
-                    'px-2 py-1 text-xs font-medium rounded-full transition-colors',
-                    activeFilters.includes('free') 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                  ]">
+          <button @click="toggleFilter('free')" :class="[
+            'px-2 py-1 text-xs font-medium rounded-full transition-colors border',
+            activeFilters.includes('free')
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-200 dark:border-green-800'
+              : 'bg-gray-100 text-gray-700 dark:bg-black dark:text-gray-300 dark:border-gray-700'
+          ]">
             <i class="i-carbon-currency-dollar mr-1 w-3 h-3"></i>
             Free
           </button>
-          <button v-if="activeFilters.length > 0" @click="clearFilters" 
-                  class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+          <button v-if="activeFilters.length > 0" @click="clearFilters"
+            class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border border-red-200 dark:border-red-800">
             <i class="i-carbon-close mr-1 w-3 h-3"></i>
             Clear Filters
           </button>
@@ -239,7 +241,7 @@
 
         <!-- Sort Controls -->
         <div class="flex items-center space-x-2">
-          <select v-model="sortBy" class="flex-1 px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg 
+          <select v-model="sortBy" class="flex-1 px-2 py-1.5 bg-white dark:bg-black border border-gray-300 dark:border-gray-700 rounded-lg 
                    text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
             <option value="name">Name</option>
             <option value="promptCost">Prompt Cost</option>
@@ -247,7 +249,7 @@
             <option value="totalCost">Total Cost</option>
             <option value="contextLength">Context Length</option>
           </select>
-          <button @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'" class="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-white dark:bg-gray-800 
+          <button @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'" class="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-white dark:bg-black 
                    border border-gray-300 dark:border-gray-700 rounded-lg">
             <span class="sr-only">Toggle sort direction</span>
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -259,7 +261,8 @@
       </div>
 
       <!-- Search Results Stats -->
-      <div v-if="searchQuery || activeFilters.length > 0" class="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-2">
+      <div v-if="searchQuery || activeFilters.length > 0"
+        class="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-2">
         <span>{{ filteredModelsCount }} models found</span>
         <span v-if="searchQuery">Searching for "{{ searchQuery }}"</span>
       </div>
@@ -270,46 +273,45 @@
         <div v-for="(models, provider) in sortedGroupedModels" :key="provider" class="space-y-3">
           <h5 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center">
             {{ provider }}
-            <span class="ml-2 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">
+            <span class="ml-2 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900/30 rounded text-xs">
               {{ models.length }}
             </span>
           </h5>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div v-for="model in models" :key="model.id" class="relative">
+            <div v-for="(model, index) in models" :key="model.id" class="relative"
+              :class="{ 'bg-gray-50 dark:bg-gray-900/20 rounded-lg': index % 2 === 0 }">
               <ModelMetadata :model="model" :compact="true" />
-              
+
               <!-- Action Buttons -->
               <div class="absolute top-2 right-2 flex gap-1">
                 <!-- Compare Button -->
-                <button @click="toggleModelComparison(model)" 
-                  :class="[
-                    'p-1 rounded-full transition-colors',
-                    isModelInComparison(model.id)
-                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
-                      : 'bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
-                  ]"
-                  :disabled="comparisonModels.length >= 2 && !isModelInComparison(model.id)">
+                <button @click="toggleModelComparison(model)" :class="[
+                  'p-1 rounded-full transition-colors',
+                  isModelInComparison(model.id)
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                    : 'bg-white dark:bg-black text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                ]" :disabled="comparisonModels.length >= 2 && !isModelInComparison(model.id)">
                   <span class="sr-only">Compare model</span>
                   <i class="i-carbon-compare w-4 h-4" />
                 </button>
-                
-                <!-- Vision Model Toggle -->
-                <button v-if="model.capabilities?.vision"
-                  @click="setPreferredVisionModel(model.id)"
-                  :class="[
-                    'p-1 rounded-full transition-colors',
-                    preferredVisionModel === model.id
-                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                      : 'bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                  ]"
+
+                <!-- Vision Model Toggle - Fixed the error in the sr-only span -->
+                <button v-if="model.capabilities?.vision" @click="setPreferredVisionModel(model.id)" :class="[
+                  'p-1 rounded-full transition-colors',
+                  preferredVisionModel === model.id
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                    : 'bg-white dark:bg-black text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                ]"
                   :title="preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model'">
-                  <span class="sr-only">{{ preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model' }}</span>
+                  <span class="sr-only">
+                    {{ preferredVisionModel === model.id ? 'Current vision model' : 'Set as preferred vision model' }}
+                  </span>
                   <i class="i-carbon-camera w-4 h-4" />
                 </button>
 
                 <!-- Pin Button -->
                 <button @click="pinModel(model.id)" :disabled="pinnedModels.length >= 9"
-                  class="p-1 bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 rounded-full"
+                  class="p-1 bg-white dark:bg-black text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 rounded-full"
                   :title="pinnedModels.length >= 9 ? 'Maximum 9 models can be pinned' : 'Pin model'">
                   <span class="sr-only">Pin model</span>
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -360,7 +362,7 @@ const initializePinnedModels = async () => {
   try {
     const store = window.electron?.store;
     if (!store) return;
-    
+
     const pinnedIds = (await store.get('pinned-models')) || [];
     const pinned = props.availableModels.filter(model => pinnedIds.includes(model.id));
     pinnedModels.value = pinned;
@@ -424,18 +426,18 @@ const unpinnedModels = computed(() => {
 // Apply filters to models
 const applyFilters = (models: OpenRouterModel[]) => {
   if (activeFilters.value.length === 0) return models
-  
+
   return models.filter(model => {
     // Check for capability filters
     const hasVision = activeFilters.value.includes('vision') ? model.capabilities?.vision : true
     const hasTools = activeFilters.value.includes('tools') ? model.capabilities?.tools : true
     const hasFunctionCalling = activeFilters.value.includes('function_calling') ? model.capabilities?.function_calling : true
-    
+
     // Check for free models
-    const isFree = activeFilters.value.includes('free') 
+    const isFree = activeFilters.value.includes('free')
       ? (model.pricing && (parseFloat(model.pricing.prompt) === 0 || parseFloat(model.pricing.completion) === 0))
       : true
-    
+
     return (
       (!activeFilters.value.includes('vision') || hasVision) &&
       (!activeFilters.value.includes('tools') || hasTools) &&
@@ -448,17 +450,17 @@ const applyFilters = (models: OpenRouterModel[]) => {
 // Sort and filter models
 const filteredModels = computed(() => {
   let models = [...unpinnedModels.value]
-  
+
   // Apply filters
   models = applyFilters(models)
-  
+
   // Apply search filter if there's a query
   if (searchQuery.value.trim()) {
     const fuse = new Fuse(models, fuseOptions)
     const results = fuse.search(searchQuery.value)
     models = results.map(result => result.item)
   }
-  
+
   // Sort models
   models.sort((a: OpenRouterModel, b: OpenRouterModel) => {
     const aValue = getSortValue(a)
@@ -478,7 +480,7 @@ const filteredModels = computed(() => {
 
     return 0
   })
-  
+
   return models
 })
 
@@ -490,14 +492,14 @@ const filteredModelsCount = computed(() => {
 // Group models by provider
 const sortedGroupedModels = computed(() => {
   const models = filteredModels.value
-  
+
   const grouped = models.reduce((acc: Record<string, OpenRouterModel[]>, model: OpenRouterModel) => {
     const [provider] = model.id.split('/')
     if (!acc[provider]) acc[provider] = []
     acc[provider].push(model)
     return acc
   }, {})
-  
+
   return grouped
 })
 
@@ -587,7 +589,7 @@ const fuseOptions = {
 // Model comparison functions
 const toggleModelComparison = (model: OpenRouterModel) => {
   const index = comparisonModels.value.findIndex(m => m.id === model.id)
-  
+
   if (index >= 0) {
     // Remove from comparison
     comparisonModels.value.splice(index, 1)
@@ -620,31 +622,31 @@ const isPricingFree = (price?: string): boolean => {
 
 const formatSinglePrice = (price?: string): string => {
   if (!price) return '-';
-  
+
   const numPrice = parseFloat(price);
-  
+
   if (isNaN(numPrice)) return '-';
-  
+
   // If price is 0, show as FREE
   if (numPrice === 0) {
     return 'FREE';
   }
-  
+
   // For costs that are $0.01 or more per token
   if (numPrice >= 0.01) {
     return `$${numPrice.toFixed(2)}/tok`;
   }
-  
+
   // For costs around a penny or less, show in cents per token
   if (numPrice >= 0.0001) {
     return `${(numPrice * 100).toFixed(1)}¢/tok`;
   }
-  
+
   // For smaller costs, show in cents per thousand tokens
   if (numPrice >= 0.0000001) {
     return `${(numPrice * 100000).toFixed(1)}¢/KTok`;
   }
-  
+
   // For tiny costs, show in cents per million tokens
   return `${(numPrice * 100000000).toFixed(1)}¢/MTok`;
 }

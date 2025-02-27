@@ -1,6 +1,6 @@
 <template>
   <div v-if="show" ref="popupRef"
-    class="fixed bottom-20 left-0 right-0 mx-auto w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+    class="fixed bottom-20 left-0 right-0 mx-auto w-full max-w-2xl bg-white dark:bg-oled-black rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
     <div class="p-4">
       <div v-if="isSearching" class="flex items-center justify-center py-4">
         <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 dark:border-white"></div>
@@ -14,7 +14,7 @@
           { 'bg-gray-100 dark:bg-gray-700': index === currentIndex }
         ]" @click="handleSelect(file)">
           <div class="font-medium">{{ file.title }}</div>
-          <div v-if="file.preview" class="text-sm text-gray-500 dark:text-gray-400 truncate">
+          <div v-if="'preview' in file" class="text-sm text-gray-500 dark:text-gray-400 truncate">
             {{ file.preview }}
           </div>
         </button>

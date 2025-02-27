@@ -161,26 +161,26 @@ const isPricingFree = (price?: string): boolean => {
 // Helper function to format a single price
 const formatSinglePrice = (price?: string): string => {
   if (!price) return '-';
-  
+
   const numPrice = parseFloat(price);
-  
+
   if (isNaN(numPrice)) return '-';
-  
+
   // If price is 0, show as FREE
   if (numPrice === 0) {
     return 'FREE';
   }
-  
+
   // For costs that are $0.01 or more per token
   if (numPrice >= 0.01) {
     return `$${numPrice.toFixed(2)}`;
   }
-  
+
   // For costs around a penny or less, show in cents per token
   if (numPrice >= 0.0001) {
     return `${(numPrice * 100).toFixed(1)}¢`;
   }
-  
+
   // For smaller costs, show in dollars per 1M tokens
   const perMillion = numPrice * 1000000;
   return `$${perMillion.toFixed(2)}/M`;
@@ -200,8 +200,9 @@ const formatSinglePrice = (price?: string): string => {
 }
 
 .dark .model-metadata {
-  background-color: #1a1a1a;
-  border-color: rgba(255, 255, 255, 0.1);
+  background-color: #000000;
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .provider-badge {
@@ -230,7 +231,7 @@ const formatSinglePrice = (price?: string): string => {
 }
 
 .dark .provider-name {
-  color: #aaa;
+  color: #ccc;
 }
 
 .model-header {
@@ -268,13 +269,13 @@ const formatSinglePrice = (price?: string): string => {
 
 .model-description {
   font-size: 0.875rem;
-  color: #666;
-  margin: 0;
   line-height: 1.4;
+  color: #374151;
+  margin: 0;
 }
 
 .dark .model-description {
-  color: #aaa;
+  color: #d1d5db;
 }
 
 .pricing-section {
@@ -282,12 +283,14 @@ const formatSinglePrice = (price?: string): string => {
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.75rem;
-  background-color: rgba(0, 0, 0, 0.03);
   border-radius: 0.375rem;
+  background-color: #f9fafb;
+  border: 1px solid #f3f4f6;
 }
 
 .dark .pricing-section {
   background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .pricing-header {
@@ -297,12 +300,12 @@ const formatSinglePrice = (price?: string): string => {
 
 .pricing-label {
   font-size: 0.75rem;
-  color: #666;
+  color: #6b7280;
   font-weight: 500;
 }
 
 .dark .pricing-label {
-  color: #aaa;
+  color: #9ca3af;
 }
 
 .pricing-values {
@@ -311,17 +314,22 @@ const formatSinglePrice = (price?: string): string => {
 }
 
 .pricing-value {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.875rem;
-  font-weight: 600;
-  font-family: monospace;
+  font-weight: 500;
+  color: #111827;
+}
+
+.dark .pricing-value {
+  color: #f3f4f6;
 }
 
 .pricing-value.free {
-  color: #10b981;
+  color: #16a34a;
 }
 
 .dark .pricing-value.free {
-  color: #34d399;
+  color: #4ade80;
 }
 
 .capabilities-section {
@@ -360,42 +368,51 @@ const formatSinglePrice = (price?: string): string => {
 .capability-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
+  gap: 0.5rem;
 }
 
 .pill {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 500;
+  padding: 0.125rem 0.375rem;
+  border-radius: 9999px;
+}
+
+.dark .pill {
+  border: 1px solid;
 }
 
 .pill.vision {
-  background-color: rgba(139, 92, 246, 0.1);
-  color: #8b5cf6;
-}
-
-.pill.tools {
-  background-color: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-
-.pill.function {
-  background-color: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: #9333ea;
+  background-color: #f3e8ff;
 }
 
 .dark .pill.vision {
-  background-color: rgba(139, 92, 246, 0.2);
+  color: #d8b4fe;
+  background-color: rgba(147, 51, 234, 0.2);
+  border-color: rgba(147, 51, 234, 0.4);
+}
+
+.pill.tools {
+  color: #2563eb;
+  background-color: #e0f2fe;
 }
 
 .dark .pill.tools {
-  background-color: rgba(245, 158, 11, 0.2);
+  color: #93c5fd;
+  background-color: rgba(37, 99, 235, 0.2);
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.pill.function {
+  color: #16a34a;
+  background-color: #dcfce7;
 }
 
 .dark .pill.function {
-  background-color: rgba(59, 130, 246, 0.2);
+  color: #86efac;
+  background-color: rgba(22, 163, 74, 0.2);
+  border-color: rgba(22, 163, 74, 0.4);
 }
 
 .performance-metrics {
@@ -455,4 +472,4 @@ const formatSinglePrice = (price?: string): string => {
 .compact .pricing-value {
   font-size: 0.75rem;
 }
-</style> 
+</style>
