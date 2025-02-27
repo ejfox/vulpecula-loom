@@ -292,13 +292,15 @@ export function useSupabase() {
     try {
       // TODO: Call OpenAI/other LLM to generate summary
       const summary = "Generated summary...";
-      const autoTitle = "Generated title...";
+      const now = new Date().toISOString();
 
-      return await updateChatMetadata(chatId, {
+      // Create metadata update with only the summary
+      const metadataUpdate: Partial<ChatMetadata> = {
         summary,
-        autoTitle,
-        summaryLastUpdated: new Date().toISOString(),
-      });
+        summaryLastUpdated: now,
+      };
+
+      return await updateChatMetadata(chatId, metadataUpdate);
     } catch (err) {
       logger.error("Failed to generate chat summary:", err);
       return null;
