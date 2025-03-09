@@ -10,6 +10,7 @@ import type {
   ObsidianSearchOptions,
 } from "../types";
 import { createApplicationMenu } from "./menu";
+import { registerObsidianHandlers } from "./ipc/obsidian";
 
 // Set the app name
 app.name = "Vulpecula";
@@ -49,14 +50,14 @@ let mainWindow: BrowserWindow | null = null;
 const setupIpcHandlers = () => {
   // Store handlers
   ipcMain.handle("store-get", (_event, key: keyof StoreSchema) => {
-    console.log("📥 Store Handler: Getting value for key:", key);
+    console.log("Store Handler: Getting value for key:", key);
     try {
       const value = store.get(key);
-      console.log("✅ Store Handler: Got value for key:", key, "Value:", value);
+      console.log("Store Handler: Got value for key:", key);
       return JSON.parse(JSON.stringify(value));
     } catch (err) {
       console.error(
-        "❌ Store Handler: Failed to get value for key:",
+        "Store Handler: Failed to get value for key:",
         key,
         "Error:",
         err
@@ -68,19 +69,13 @@ const setupIpcHandlers = () => {
   ipcMain.handle(
     "store-set",
     (_event, key: keyof StoreSchema, value: StoreSchema[keyof StoreSchema]) => {
-      // console.log(
-      //   "📤 Store Handler: Setting value for key:",
-      //   key,
-      //   "Value:",
-      //   value
-      // );
       try {
         const cloneableValue = JSON.parse(JSON.stringify(value));
         store.set(key, cloneableValue);
-        console.log("✅ Store Handler: Successfully set value for key:", key);
+        console.log("Store Handler: Successfully set value for key:", key);
       } catch (err) {
         console.error(
-          "❌ Store Handler: Failed to set value for key:",
+          "Store Handler: Failed to set value for key:",
           key,
           "Error:",
           err
@@ -92,91 +87,23 @@ const setupIpcHandlers = () => {
 
   // Shell handlers
   ipcMain.handle("shell:open-external", async (_event, url: string) => {
-    console.log("🔗 Shell Handler: Opening external URL:", url);
+    console.log("Shell Handler: Opening external URL:", url);
     try {
       await shell.openExternal(url);
-      console.log("✅ Shell Handler: Successfully opened URL");
+      console.log("Shell Handler: Successfully opened URL");
     } catch (err) {
-      console.error("❌ Shell Handler: Failed to open URL:", err);
+      console.error("Shell Handler: Failed to open URL:", err);
       throw err;
     }
   });
 
   // Obsidian handlers
-  console.log("🔄 Setting up Obsidian handlers...");
+  console.log("Setting up Obsidian handlers...");
 
-  // Handler for file search
-  ipcMain.handle(
-    "search-obsidian-files",
-    async (_, options: ObsidianSearchOptions) => {
-      console.log(
-        "🔄 Obsidian Handler: Searching files with options:",
-        options
-      );
-      try {
-        if (!options.path) {
-          console.warn("⚠️ Obsidian Handler: No vault path provided");
-          return [];
-        }
-        const results = await searchObsidianFiles(options);
-        console.log("✅ Obsidian Handler: Found", results.length, "files");
-        return results;
-      } catch (err) {
-        console.error(
-          "❌ Obsidian Handler: Error in search-obsidian-files:",
-          err
-        );
-        return [];
-      }
-    }
-  );
+  // Register all Obsidian-specific handlers from the dedicated module
+  registerObsidianHandlers();
 
-  // Handler for getting vault path
-  ipcMain.handle("get-vault-path", async () => {
-    console.log("📂 Obsidian Handler: Getting vault path");
-    try {
-      const vaultPath = store.get("obsidian-vault-path");
-      console.log("✅ Obsidian Handler: Got vault path:", vaultPath);
-      return vaultPath;
-    } catch (err) {
-      console.error("❌ Obsidian Handler: Error getting vault path:", err);
-      throw err;
-    }
-  });
-
-  // Handler for folder selection
-  ipcMain.handle("select-folder", async () => {
-    console.log("📂 Obsidian Handler: Opening folder selection dialog");
-    return dialog.showOpenDialog({
-      properties: ["openDirectory"],
-      title: "Select Obsidian Vault",
-      buttonLabel: "Select Vault Folder",
-    });
-  });
-
-  // Handler for getting file content
-  ipcMain.handle(
-    "get-obsidian-file-content",
-    async (
-      _,
-      { vaultPath, filePath }: { vaultPath: string; filePath: string }
-    ) => {
-      console.log("📄 Obsidian Handler: Getting file content:", {
-        vaultPath,
-        filePath,
-      });
-      try {
-        const content = await readFile(filePath, "utf-8");
-        console.log("✅ Obsidian Handler: Got file content");
-        return { content };
-      } catch (err) {
-        console.error("❌ Obsidian Handler: Error getting file content:", err);
-        throw err;
-      }
-    }
-  );
-
-  console.log("✅ Obsidian handlers setup complete");
+  console.log("Obsidian handlers setup complete");
 };
 
 // Obsidian file scanning and searching functions
@@ -327,27 +254,22 @@ const createWindow = async (): Promise<void> => {
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(async () => {
-  console.log("🚀 Electron app ready");
+  console.log("Electron app ready");
 
   // Set up IPC handlers first
-  console.log("🔄 Setting up IPC handlers...");
+  console.log("Setting up IPC handlers...");
   setupIpcHandlers();
-  console.log("✅ IPC handlers setup complete");
-
-  // Verify handlers are registered
-  console.log("🔍 Verifying IPC handlers...");
-  const channels = ipcMain.eventNames();
-  console.log("📝 Registered IPC channels:", channels);
+  console.log("IPC handlers setup complete");
 
   // Then create the window
-  console.log("🔄 Creating main window...");
+  console.log("Creating main window...");
   await createWindow();
-  console.log("✅ Main window created");
+  console.log("Main window created");
 
   // Create the menu after window is created
-  console.log("🔄 Creating application menu...");
+  console.log("Creating application menu...");
   createApplicationMenu(mainWindow!);
-  console.log("✅ Application menu created");
+  console.log("Application menu created");
 });
 
 // Quit when all windows are closed, except on macOS

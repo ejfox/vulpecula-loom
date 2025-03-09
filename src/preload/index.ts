@@ -1,16 +1,44 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+console.log("Preload script starting...");
+
+// List of valid IPC channels for security
+const validChannels = [
+  "store-get",
+  "store-set",
+  "get-vault-path",
+  "search-obsidian-files",
+  "select-folder",
+  "check-path-exists",
+  "shell:open-external",
+  "get-obsidian-file-content",
+];
+
 // Create the electron API object
 const electronAPI = {
   ipc: {
-    invoke: (channel: string, ...args: any[]) =>
-      ipcRenderer.invoke(channel, ...args),
+    invoke: async (channel: string, ...args: any[]) => {
+      // Validate channel for security
+      if (!validChannels.includes(channel)) {
+        console.error(`Unauthorized IPC channel: ${channel}`);
+        throw new Error(`Unauthorized IPC channel: ${channel}`);
+      }
+
+      try {
+        // Invoke channel and return result
+        const result = await ipcRenderer.invoke(channel, ...args);
+        return result;
+      } catch (error) {
+        console.error(`Error invoking ${channel}:`, error);
+        throw error;
+      }
+    },
     on: (channel: string, func: (...args: any[]) => void) => {
-      ipcRenderer.on(channel, func);
+      ipcRenderer.on(channel, (_, ...args) => func(...args));
       return () => ipcRenderer.removeListener(channel, func);
     },
     once: (channel: string, func: (...args: any[]) => void) => {
-      ipcRenderer.once(channel, func);
+      ipcRenderer.once(channel, (_, ...args) => func(...args));
     },
     removeListener: (channel: string, func: (...args: any[]) => void) => {
       ipcRenderer.removeListener(channel, func);
@@ -33,6 +61,8 @@ const electronAPI = {
 
 // Expose the API to the renderer process
 contextBridge.exposeInMainWorld("electron", electronAPI);
+
+console.log("Preload script completed, API exposed");
 
 // Export for TypeScript
 export type ElectronAPI = typeof electronAPI;

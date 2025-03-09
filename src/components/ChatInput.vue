@@ -11,6 +11,7 @@ const props = defineProps<{
   isSearchingFiles: boolean
   hasObsidianVault: boolean
   obsidianSearchResults: ObsidianFile[]
+  obsidianVaultPath: string
 }>()
 
 const emit = defineEmits<{
@@ -392,7 +393,8 @@ const removeFile = (fileToRemove: IncludedFile) => {
 
         <!-- File mention popup -->
         <ObsidianMentionPopup :show="showMentionPopup" :results="obsidianSearchResults" :is-searching="isSearchingFiles"
-          :has-vault="hasObsidianVault" @select="insertObsidianLink" @close="() => emit('mention-popup', false)" />
+          :hasVault="hasObsidianVault" :path="obsidianVaultPath" @select="insertObsidianLink"
+          @close="() => emit('mention-popup', false)" />
 
         <!-- Included files preview -->
         <div v-if="messageIncludedFiles.length > 0"

@@ -28,21 +28,35 @@ const messageModelName = computed(() => {
   if (props.message.role !== 'assistant' || !props.message.model) {
     return props.modelName
   }
+
+  // Check if this is a Coach Artie message
+  if (props.message.model === 'coach-artie') {
+    return '🤖 Coach Artie'
+  }
+
   // Extract the model name from the full model ID (e.g., "anthropic/claude-3-sonnet" -> "claude-3-sonnet")
   return props.message.model.split('/').pop() || props.modelName
+})
+
+// Check if this message is from Coach Artie
+const isCoachArtieMessage = computed(() => {
+  return props.message.model === 'coach-artie'
 })
 </script>
 
 <template>
   <div class="group relative flex gap-3 py-3" :class="{
-    'opacity-50': message.isStreaming
+    'opacity-50': message.isStreaming,
+    'coach-artie-message': isCoachArtieMessage && message.role === 'assistant'
   }">
     <!-- Role Icon -->
     <div class="flex h-8 w-8 flex-none items-center justify-center rounded-lg" :class="{
-      'bg-blue-500/10 text-blue-400': message.role === 'assistant',
+      'bg-blue-500/10 text-blue-400': message.role === 'assistant' && !isCoachArtieMessage,
+      'bg-indigo-500/10 text-indigo-400': message.role === 'assistant' && isCoachArtieMessage,
       'bg-gray-500/10 text-gray-400': message.role === 'user'
     }">
-      <Icon v-if="message.role === 'assistant'" icon="carbon:bot" class="h-5 w-5" />
+      <Icon v-if="message.role === 'assistant' && isCoachArtieMessage" icon="mdi:robot" class="h-5 w-5" />
+      <Icon v-else-if="message.role === 'assistant'" icon="carbon:bot" class="h-5 w-5" />
       <Icon v-else icon="carbon:user" class="h-5 w-5" />
     </div>
 
@@ -102,6 +116,22 @@ const messageModelName = computed(() => {
 </template>
 
 <style scoped>
+/* Add styles for Coach Artie messages */
+.coach-artie-message {
+  position: relative;
+}
+
+.coach-artie-message::before {
+  content: '';
+  position: absolute;
+  left: -0.5rem;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, rgba(79, 70, 229, 0.5), rgba(79, 70, 229, 0.1));
+  border-radius: 1px;
+}
+
 :deep(.prose) {
   font-size: 0.875rem;
   line-height: 1.5;

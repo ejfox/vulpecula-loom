@@ -22,6 +22,7 @@ import {
   parseModelCommands as parseModelCommandsFromLibrary,
   type ParsedCommands,
 } from "../lib/aiCommands";
+import { useCoachArtie } from "./useCoachArtie";
 
 // Create event bus for chat updates
 const chatBus = useEventBus("chat-updates");
@@ -93,6 +94,7 @@ const shouldAutoGenerateTitle = (messages: ChatMessage[]) => {
 export function useAIChat() {
   // Initialize composables
   const openRouter = useOpenRouter();
+  const coachArtie = useCoachArtie();
   const { supabase, saveChatHistory, updateChatHistory, updateChatMetadata } =
     useSupabase();
   const { isAuthenticated } = useActiveUser();
@@ -334,36 +336,70 @@ export function useAIChat() {
       let lastSaveTime = Date.now();
 
       // Get AI response
-      const response = await openRouter.sendMessage(content, {
-        model: currentModel.value,
-        temperature: temperature.value,
-        includedFiles,
-        conversationHistory: currentMessages,
-        stream: supportsStreaming,
-        onToken: supportsStreaming
-          ? (token: string) => {
-              streamedContent += token;
+      let response;
 
-              // Update UI less frequently to reduce jank
-              const now = Date.now();
-              if (now - lastSaveTime > 50) {
-                // Only update every 50ms
-                const updatedMessages = [...messages.value];
-                const messageIndex = updatedMessages.findIndex(
-                  (m) => m.id === assistantMessage.id
-                );
-                if (messageIndex !== -1) {
-                  updatedMessages[messageIndex] = {
-                    ...updatedMessages[messageIndex],
-                    content: streamedContent,
-                  };
-                  messages.value = updatedMessages;
-                  lastSaveTime = now;
+      // Check if we're using Coach Artie
+      if (currentModel.value === "coach-artie") {
+        logger.debug("Using Coach Artie for response");
+        response = await coachArtie.sendMessage(content, {
+          conversationHistory: currentMessages,
+          onToken: supportsStreaming
+            ? (token: string) => {
+                streamedContent += token;
+
+                // Update UI less frequently to reduce jank
+                const now = Date.now();
+                if (now - lastSaveTime > 50) {
+                  // Only update every 50ms
+                  const updatedMessages = [...messages.value];
+                  const messageIndex = updatedMessages.findIndex(
+                    (m) => m.id === assistantMessage.id
+                  );
+                  if (messageIndex !== -1) {
+                    updatedMessages[messageIndex] = {
+                      ...updatedMessages[messageIndex],
+                      content: streamedContent,
+                    };
+                    messages.value = updatedMessages;
+                    lastSaveTime = now;
+                  }
                 }
               }
-            }
-          : undefined,
-      } as any);
+            : undefined,
+        });
+      } else {
+        // Use OpenRouter as before
+        response = await openRouter.sendMessage(content, {
+          model: currentModel.value,
+          temperature: temperature.value,
+          includedFiles,
+          conversationHistory: currentMessages,
+          stream: supportsStreaming,
+          onToken: supportsStreaming
+            ? (token: string) => {
+                streamedContent += token;
+
+                // Update UI less frequently to reduce jank
+                const now = Date.now();
+                if (now - lastSaveTime > 50) {
+                  // Only update every 50ms
+                  const updatedMessages = [...messages.value];
+                  const messageIndex = updatedMessages.findIndex(
+                    (m) => m.id === assistantMessage.id
+                  );
+                  if (messageIndex !== -1) {
+                    updatedMessages[messageIndex] = {
+                      ...updatedMessages[messageIndex],
+                      content: streamedContent,
+                    };
+                    messages.value = updatedMessages;
+                    lastSaveTime = now;
+                  }
+                }
+              }
+            : undefined,
+        } as any);
+      }
 
       // Check for model commands in the response
       const parsedCommands = parseModelCommands(response.content);

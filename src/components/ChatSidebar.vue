@@ -281,6 +281,7 @@ import { useOpenRouter } from '../composables/useOpenRouter'
 import logger from '../lib/logger'
 import ChatImport from './ChatImport.vue'
 import { formatDistanceToNow } from 'date-fns'
+import { useSupabase } from '../composables/useSupabase'
 
 // Preload the Monaspace Neon font to avoid FOIT (Flash of Invisible Text)
 const preloadFont = () => {
@@ -402,6 +403,12 @@ const hasAttachments = (chat: Chat) => {
 
 // Generate a summary for a single chat
 const generateSummaryForChat = async (chat: Chat) => {
+  // SAFETY CHECK: Don't process if we've made an API call too recently
+  if (Date.now() - lastSummaryApiCallTime < MIN_API_CALL_INTERVAL) {
+    logger.debug(`Skipping generateSummaryForChat for chat ${chat.id} - throttled`);
+    return;
+  }
+  
   // Skip if already has a recent summary (less than 24 hours old)
   const lastSummaryTime = chat.metadata.summaryLastUpdated ? new Date(chat.metadata.summaryLastUpdated).getTime() : 0
   const isRecent = lastSummaryTime > Date.now() - 24 * 60 * 60 * 1000
@@ -410,6 +417,15 @@ const generateSummaryForChat = async (chat: Chat) => {
     chatSummaries.value[chat.id] = chat.metadata.summary
     return
   }
+
+  // Skip if already loading
+  if (summaryLoadingIds.value.has(chat.id)) {
+    logger.debug(`Summary already loading for chat ${chat.id}, skipping`)
+    return
+  }
+
+  // Update the throttle timestamp
+  lastSummaryApiCallTime = Date.now();
 
   // Start loading state
   summaryLoadingIds.value.add(chat.id)
@@ -428,6 +444,10 @@ const generateSummaryForChat = async (chat: Chat) => {
         summaryLastUpdated: new Date().toISOString()
       }
 
+      // Update the chat object to prevent future regeneration
+      chat.metadata.summary = summary
+      chat.metadata.summaryLastUpdated = new Date().toISOString()
+
       // Save to store with error handling
       try {
         const store = useStore()
@@ -436,6 +456,21 @@ const generateSummaryForChat = async (chat: Chat) => {
           summary,
           updatedAt: new Date().toISOString()
         })
+
+        // Also update the metadata in Supabase to ensure persistence
+        try {
+          const { supabase } = useSupabase()
+          await supabase
+            .from('vulpeculachats')
+            .update({ 
+              metadata: updatedMetadata 
+            })
+            .eq('id', chat.id)
+          
+          logger.debug(`Updated summary metadata in database for chat ${chat.id}`)
+        } catch (dbError) {
+          logger.error('Failed to update summary in database', { chatId: chat.id, error: dbError })
+        }
       } catch (storeError) {
         logger.error('Failed to save summary to store', { chatId: chat.id, error: storeError })
         // Still keep the summary in memory even if storage fails
@@ -450,13 +485,33 @@ const generateSummaryForChat = async (chat: Chat) => {
 
 // Regenerate summary for a specific chat
 const regenerateSummary = async (chat: Chat) => {
+  // SAFETY CHECK: Don't process if we've made an API call too recently
+  if (Date.now() - lastSummaryApiCallTime < MIN_API_CALL_INTERVAL) {
+    logger.debug('Skipping regenerateSummary - throttled');
+    return;
+  }
+
   if (summaryLoadingIds.value.has(chat.id)) return
 
+  // Update the throttle timestamp
+  lastSummaryApiCallTime = Date.now();
+  
   summaryLoadingIds.value.add(chat.id)
   try {
     const summary = await openRouter.generateChatSummary(chat.messages)
     if (summary) {
       chatSummaries.value[chat.id] = summary
+
+      // Update the chat object to prevent future regeneration
+      chat.metadata.summary = summary
+      chat.metadata.summaryLastUpdated = new Date().toISOString()
+
+      // Create updated metadata object
+      const updatedMetadata = {
+        ...chat.metadata,
+        summary,
+        summaryLastUpdated: new Date().toISOString()
+      }
 
       // Save to store with error handling
       try {
@@ -466,6 +521,21 @@ const regenerateSummary = async (chat: Chat) => {
           summary,
           updatedAt: new Date().toISOString()
         })
+
+        // Also update the metadata in Supabase to ensure persistence
+        try {
+          const { supabase } = useSupabase()
+          await supabase
+            .from('vulpeculachats')
+            .update({ 
+              metadata: updatedMetadata 
+            })
+            .eq('id', chat.id)
+          
+          logger.debug(`Updated summary metadata in database for chat ${chat.id}`)
+        } catch (dbError) {
+          logger.error('Failed to update summary in database', { chatId: chat.id, error: dbError })
+        }
       } catch (storeError) {
         logger.error('Failed to save summary to store', { chatId: chat.id, error: storeError })
         // Still keep the summary in memory even if storage fails
@@ -480,10 +550,19 @@ const regenerateSummary = async (chat: Chat) => {
 
 // Generate summaries for all visible chats
 const generateAllSummaries = async () => {
+  // SAFETY CHECK: Don't process if we've made an API call too recently
+  if (Date.now() - lastSummaryApiCallTime < MIN_API_CALL_INTERVAL) {
+    logger.debug('Skipping generateAllSummaries - throttled');
+    return;
+  }
+
   if (isGeneratingSummaries.value) return
 
   isGeneratingSummaries.value = true
   try {
+    // Update the throttle timestamp
+    lastSummaryApiCallTime = Date.now();
+    
     // Load existing summaries from storage first
     const store = useStore()
     for (const chat of props.chatHistory) {
@@ -507,12 +586,16 @@ const generateAllSummaries = async () => {
       }
     }
 
-    // Generate missing summaries (up to 10 in parallel)
+    // Generate missing summaries (limit to 3 at a time to prevent token overuse)
     const chatsNeedingSummaries = props.chatHistory.filter(
-      chat => !chatSummaries.value[chat.id] && chat.messages.length > 1
-    ).slice(0, 10) // Limit to 10 chats at a time
+      chat => !chatSummaries.value[chat.id] && chat.messages.length > 1 &&
+      // Only include chats that don't have a recent summary in their metadata
+      (!chat.metadata.summary || !chat.metadata.summaryLastUpdated || 
+       new Date(chat.metadata.summaryLastUpdated).getTime() < Date.now() - 24 * 60 * 60 * 1000)
+    ).slice(0, 3) // Limit to 3 chats at a time
 
     if (chatsNeedingSummaries.length > 0) {
+      logger.debug(`Generating summaries for ${chatsNeedingSummaries.length} chats`)
       await Promise.all(
         chatsNeedingSummaries.map(chat => generateSummaryForChat(chat))
       )
@@ -721,30 +804,90 @@ onMounted(() => {
   })
 })
 
+// Add simple throttling variables to prevent excessive API calls
+let lastSummaryApiCallTime = Date.now() - 10000; // Initialize to 10 seconds ago
+let lastTitleApiCallTime = Date.now() - 10000; // Initialize to 10 seconds ago
+const MIN_API_CALL_INTERVAL = 3000; // 3 seconds minimum between API calls
+
 // Watch for changes in chat history to update summaries and titles
 watch(() => props.chatHistory, async (newHistory, oldHistory) => {
+  // SAFETY CHECK: Don't process if we've made an API call too recently
+  const now = Date.now();
+  if (now - lastSummaryApiCallTime < MIN_API_CALL_INTERVAL) {
+    logger.debug('Skipping summary generation - throttled');
+    return;
+  }
+
   if (newHistory.length !== oldHistory?.length) {
     // Check if there are any chats without summaries
     const unsummarizedChats = newHistory.filter(
-      chat => !chatSummaries.value[chat.id] && chat.messages.length > 1
+      chat => !chatSummaries.value[chat.id] && chat.messages.length > 1 && 
+      // Only include chats that don't have a recent summary in their metadata
+      (!chat.metadata.summary || !chat.metadata.summaryLastUpdated || 
+       new Date(chat.metadata.summaryLastUpdated).getTime() < Date.now() - 24 * 60 * 60 * 1000)
     )
 
     if (unsummarizedChats.length > 0) {
-      await generateAllSummaries()
+      // Limit to max 3 summaries per update to prevent token overuse
+      const limitedChats = unsummarizedChats.slice(0, 3)
+      logger.debug(`Generating summaries for ${limitedChats.length} chats out of ${unsummarizedChats.length} unsummarized`)
+      
+      // Update the throttle timestamp
+      lastSummaryApiCallTime = now;
+      
+      // Generate summaries for each chat individually instead of calling generateAllSummaries
+      // This prevents the function from checking all chats again
+      for (const chat of limitedChats) {
+        await generateSummaryForChat(chat)
+      }
     }
 
     // Check for chats needing title generation
-    newHistory.forEach(chat => {
-      checkForAutoTitle(chat)
-    })
+    // SAFETY CHECK: Don't process if we've made a title API call too recently
+    if (now - lastTitleApiCallTime >= MIN_API_CALL_INTERVAL) {
+      // Only check one chat at a time to prevent excessive API calls
+      const chatNeedingTitle = newHistory.find(chat => {
+        const defaultTitles = ['new chat', 'untitled chat', 'untitled', '']
+        const hasDefaultTitle = !chat.title || defaultTitles.includes(chat.title.toLowerCase())
+        
+        // Check if we've already tried to generate a title in the last hour
+        let lastTitleAttemptTime = 0
+        const autoTitle = chat.metadata.autoTitle as { value?: string, lastGeneratedAt?: string } | undefined
+        if (autoTitle && autoTitle.lastGeneratedAt) {
+          lastTitleAttemptTime = new Date(autoTitle.lastGeneratedAt).getTime()
+        }
+        
+        const oneHourAgo = Date.now() - (60 * 60 * 1000)
+        const canGenerateAgain = lastTitleAttemptTime === 0 || lastTitleAttemptTime < oneHourAgo
+        
+        // Generate title at message thresholds: 5 messages, 10 messages, or every 20 messages
+        const atThreshold = chat.messages.length === 5 ||
+          chat.messages.length === 10 ||
+          chat.messages.length % 20 === 0
+        
+        return chat.messages.length >= 5 && hasDefaultTitle && canGenerateAgain && atThreshold
+      });
+      
+      if (chatNeedingTitle) {
+        // Update the throttle timestamp
+        lastTitleApiCallTime = now;
+        checkForAutoTitle(chatNeedingTitle)
+      }
+    }
   } else {
     // Messages might have been added to existing chats, check if any need titles
-    for (let i = 0; i < newHistory.length; i++) {
-      const newChat = newHistory[i]
-      const oldChat = oldHistory?.[i]
+    // SAFETY CHECK: Don't process if we've made a title API call too recently
+    if (now - lastTitleApiCallTime >= MIN_API_CALL_INTERVAL) {
+      for (let i = 0; i < newHistory.length; i++) {
+        const newChat = newHistory[i]
+        const oldChat = oldHistory?.[i]
 
-      if (newChat && oldChat && newChat.messages.length !== oldChat.messages.length) {
-        checkForAutoTitle(newChat)
+        if (newChat && oldChat && newChat.messages.length !== oldChat.messages.length) {
+          // Update the throttle timestamp
+          lastTitleApiCallTime = now;
+          checkForAutoTitle(newChat)
+          break; // Only process one chat at a time
+        }
       }
     }
   }
@@ -788,6 +931,12 @@ const parseModelCommands = (content: string) => {
  * This could be called when new messages are added
  */
 const checkForAutoTitle = (chat: Chat) => {
+  // SAFETY CHECK: Don't process if we've made an API call too recently
+  if (Date.now() - lastTitleApiCallTime < MIN_API_CALL_INTERVAL) {
+    logger.debug('Skipping checkForAutoTitle - throttled');
+    return;
+  }
+
   // Only suggest retitling if:
   // 1. Chat has enough messages (at least 5)
   // 2. Chat title is "New Chat" or "Untitled" or null
@@ -823,6 +972,15 @@ const checkForAutoTitle = (chat: Chat) => {
  * Generate a title for a chat using the Gemini model
  */
 const generateTitleForChat = async (chat: Chat) => {
+  // SAFETY CHECK: Don't process if we've made an API call too recently
+  if (Date.now() - lastTitleApiCallTime < MIN_API_CALL_INTERVAL) {
+    logger.debug('Skipping generateTitleForChat - throttled');
+    return;
+  }
+
+  // Update the throttle timestamp
+  lastTitleApiCallTime = Date.now();
+
   try {
     const messages = chat.messages.slice(0, Math.min(chat.messages.length, 10))
 

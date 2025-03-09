@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useActiveUser } from '../composables/useActiveUser'
+import { useCoachArtie } from '../composables/useCoachArtie'
 import type { OpenRouterModel } from '../types'
 
 const props = defineProps({
@@ -39,6 +40,7 @@ const props = defineProps({
 })
 
 const { user, signOut } = useActiveUser()
+const coachArtie = useCoachArtie()
 const isUserMenuOpen = ref(false)
 
 const emit = defineEmits(['update:isContextPanelOpen', 'update:isChatSidebarOpen', 'set-model', 'open-settings', 'open-api-keys'])
@@ -99,6 +101,9 @@ const handleClickOutside = (e: MouseEvent) => {
     isUserMenuOpen.value = false
   }
 }
+
+// Add computed property to check if Coach Artie is available
+const isCoachArtieConnected = computed(() => coachArtie.isConnected.value)
 
 onMounted(() => {
   // ... existing code ...
@@ -201,16 +206,35 @@ const toggleUserMenu = () => {
       Vulpecula
     </h1>
 
+    <!-- Coach Artie Status Indicator -->
+    <div v-if="isCoachArtieConnected" class="flex items-center mr-2">
+      <span
+        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700">
+        <span class="w-2 h-2 mr-1 bg-indigo-500 rounded-full animate-pulse"></span>
+        🤖 Coach Artie
+      </span>
+    </div>
+
     <!-- Model Selector -->
     <div class="relative mx-auto">
       <select :value="currentModel" @change="handleModelChange" class="appearance-none bg-transparent border border-macos-gray-200 dark:border-ayu-dark-line 
                rounded-md px-3 py-1 text-xs focus:ring-1 focus:ring-macos-blue focus:border-macos-blue
                text-macos-gray-900 dark:text-ayu-dark-editor-fg focus:outline-none">
+        <!-- Coach Artie at the top (if available) -->
+        <option v-if="availableModels.some(m => m.id === 'coach-artie')" value="coach-artie" class="font-bold">
+          🤖 Coach Artie
+        </option>
+
+        <!-- Divider if Coach Artie is available -->
+        <option v-if="availableModels.some(m => m.id === 'coach-artie')" disabled>──────────</option>
+
         <template v-if="groupedModels && Object.keys(groupedModels).length">
           <optgroup v-for="(models, provider) in groupedModels" :key="provider" :label="provider">
-            <option v-for="model in models" :key="model.id" :value="model.id">
-              {{ model.name || model.id.split('/').pop() }}
-            </option>
+            <template v-for="model in models" :key="model.id">
+              <option v-if="model.id !== 'coach-artie'" :value="model.id">
+                {{ model.name || model.id.split('/').pop() }}
+              </option>
+            </template>
           </optgroup>
         </template>
         <template v-else>

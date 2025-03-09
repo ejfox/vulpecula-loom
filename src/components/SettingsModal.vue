@@ -52,6 +52,7 @@ const error = ref<string | null>(null)
 const isLoading = ref(true)
 const obsidianVaultPath = ref('')
 const isSelectingVault = ref(false)
+const diagnosticResults = ref('')
 
 // Load preferences from store with retry mechanism
 const loadPreferences = async () => {
@@ -436,6 +437,86 @@ onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange)
   window.removeEventListener('logticker-visibility-changed', (() => { }) as EventListener)
 })
+
+// Function to run diagnostics
+const runDiagnostics = async () => {
+  diagnosticResults.value = 'Running diagnostics...\n';
+
+  try {
+    // Check for electron API
+    if (!window.electron?.ipc) {
+      diagnosticResults.value += '❌ Electron IPC not available\n';
+      return;
+    }
+
+    // Check vault path
+    const storedVaultPath = await store.get('obsidian-vault-path');
+    diagnosticResults.value += `Stored vault path: ${storedVaultPath || 'Not set'}\n`;
+
+    // Check if path exists
+    const pathExists = await window.electron.ipc.invoke('check-path-exists', storedVaultPath);
+    diagnosticResults.value += `Path exists: ${pathExists ? '✅ Yes' : '❌ No'}\n`;
+
+    if (pathExists) {
+      // Try to scan directory
+      diagnosticResults.value += 'Scanning directory for markdown files...\n';
+      const fileCount = await window.electron.ipc.invoke('count-markdown-files', storedVaultPath);
+      diagnosticResults.value += `Found ${fileCount} markdown files in vault\n`;
+
+      // Try a sample search
+      const testQuery = 'test';
+      diagnosticResults.value += `Testing search with query: "${testQuery}"...\n`;
+      const searchResults = await window.electron.ipc.invoke('search-obsidian-files', {
+        path: storedVaultPath,
+        searchTerm: testQuery
+      });
+
+      diagnosticResults.value += `Search returned ${searchResults.length} results\n`;
+      if (searchResults.length > 0) {
+        diagnosticResults.value += 'Sample result:\n' +
+          JSON.stringify(searchResults[0], null, 2) + '\n';
+      }
+    }
+
+    diagnosticResults.value += 'Diagnostics complete\n';
+  } catch (error: any) {
+    diagnosticResults.value += `❌ Error during diagnostics: ${error?.message || String(error)}\n`;
+  }
+};
+
+// Function to refresh vault cache
+const refreshVaultCache = async () => {
+  try {
+    if (!obsidianVaultPath.value) {
+      console.error('No vault path set');
+      return;
+    }
+
+    diagnosticResults.value = 'Refreshing vault cache...\n';
+    if (window.electron?.ipc) {
+      await window.electron.ipc.invoke('refresh-obsidian-cache', obsidianVaultPath.value);
+      diagnosticResults.value += '✅ Cache refreshed successfully\n';
+      console.log('Vault cache refreshed');
+    } else {
+      throw new Error('Electron IPC not available');
+    }
+  } catch (error: any) {
+    diagnosticResults.value += `❌ Error refreshing cache: ${error?.message || String(error)}\n`;
+    console.error('Failed to refresh cache');
+  }
+};
+
+// Replace toast initialization with a simple notification function
+// const toast = useToast()
+const showNotification = (message: string, type: 'error' | 'success' = 'success') => {
+  console.log(`[${type.toUpperCase()}] ${message}`)
+  if (type === 'error') {
+    alert(`Error: ${message}`)
+  } else if (type === 'success') {
+    // Optional: comment this out if you don't want success alerts
+    alert(`Success: ${message}`)
+  }
+}
 </script>
 
 <template>

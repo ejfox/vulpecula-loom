@@ -7,7 +7,7 @@
     z-40:   Modal backdrops
     z-50:   Modals/dialogs/overlays
   -->
-  <div class="h-screen flex flex-col bg-white dark:bg-oled-black">
+  <div id="app" class="app-container h-screen flex flex-col" :class="{ 'coach-artie-mode': isCoachArtieMode }">
     <!-- Base App Shell -->
     <div v-if="isAuthenticated" class="relative flex flex-col flex-1 min-h-0">
       <!-- Title Bar -->
@@ -71,8 +71,9 @@
             <ChatInput v-model="messageInput" :is-loading="isSending" :has-valid-key="hasValidKey"
               :show-mention-popup="showMentionPopup" :is-searching-files="isSearchingFiles"
               :has-obsidian-vault="hasObsidianVault" :obsidian-search-results="obsidianSearchResults"
-              @send="handleSendMessage" @mention-popup="(show) => showMentionPopup = show"
-              @obsidian-link="handleObsidianLink" @input="(query) => searchQuery = query" />
+              :obsidian-vault-path="obsidian.vaultPath.value" @send="handleSendMessage"
+              @mention-popup="(show) => showMentionPopup = show" @obsidian-link="handleObsidianLink"
+              @input="(query) => searchQuery = query" />
           </div>
         </main>
       </div>
@@ -144,6 +145,7 @@ import { useSupabase } from './composables/useSupabase'
 import { useAIChat } from './composables/useAIChat'
 import { useStore } from './lib/store'
 import { useObsidianFiles } from './composables/useObsidianFiles'
+import { useCoachArtie } from './composables/useCoachArtie'
 import type { ObsidianFile } from './types'
 
 // Component imports
@@ -180,6 +182,7 @@ const { loadChatHistories, saveChatHistory, deleteAllChats } = useSupabase()
 const { isDark, systemPrefersDark } = useTheme()
 const aiChat = useAIChat()
 const openRouter = useOpenRouter()
+const coachArtie = useCoachArtie()
 const store = useStore()
 const obsidian = useObsidianFiles()
 
@@ -211,6 +214,7 @@ const chatContainerRef = ref<HTMLElement | null>(null)
 const messageInput = ref('')
 const isKeyboardShortcutsModalOpen = ref(false)
 const isClearChatHistoryModalOpen = ref(false)
+const isDevelopmentMode = ref(import.meta.env.DEV)
 
 // =========================================
 // Chat state
@@ -242,16 +246,43 @@ const preferences = useLocalStorage('preferences', {
 // Computed properties
 // =========================================
 const availableModels = computed(() => {
-  return openRouter.availableModels.value?.map(model => ({
+  // Create Coach Artie model
+  const coachArtieModel = {
+    id: 'coach-artie',
+    name: '🤖 Coach Artie',
+    description: 'Memory-enhanced local AI assistant',
+    context_length: 100000, // Arbitrary large context size
+    pricing: {
+      prompt: '0',
+      completion: '0'
+    },
+    capabilities: {
+      vision: false,
+      tools: true,
+      function_calling: true
+    },
+    provider: 'local'
+  };
+
+  // Get OpenRouter models
+  const openRouterModels = openRouter.availableModels.value?.map(model => ({
     ...model,
     name: model.name || model.id.split('/').pop() || '',
     description: model.description
-  })) || []
+  })) || [];
+
+  // Add Coach Artie at the top if it's available
+  return coachArtie.isConnected.value
+    ? [coachArtieModel, ...openRouterModels]
+    : openRouterModels;
 })
 
 const shouldShowWelcome = computed(() => {
   return messages.value.length === 0 && chatHistory.value.length === 0
 })
+
+// Add a computed property to check if Coach Artie is the current model
+const isCoachArtieMode = computed(() => currentModel.value === 'coach-artie')
 
 // =========================================
 // Theme handling
@@ -718,6 +749,31 @@ onMounted(async () => {
     logger.debug('Cleaning up IPC listeners')
     cleanupFns.forEach(cleanup => cleanup && cleanup())
   })
+
+  // Sync the hasObsidianVault with the composable's computed property
+  hasObsidianVault.value = obsidian.hasVault.value;
+  console.log('Initial Obsidian state:');
+  console.log('  - hasVault from composable:', obsidian.hasVault.value);
+  console.log('  - hasObsidianVault in App.vue:', hasObsidianVault.value);
+
+  // Ensure Obsidian vault is loaded with a slight delay to ensure store is ready
+  setTimeout(async () => {
+    await refreshObsidianVault();
+
+    // Try a test search to verify functionality if we have a vault
+    if (obsidian.hasVault.value) {
+      try {
+        isSearchingFiles.value = true;
+        await obsidian.searchFiles('test');
+        console.log('Test search after init:', obsidian.searchResults.value?.length || 0, 'results');
+        obsidianSearchResults.value = obsidian.searchResults.value;
+      } catch (err) {
+        console.error('Test search failed:', err);
+      } finally {
+        isSearchingFiles.value = false;
+      }
+    }
+  }, 1500);
 })
 
 // Watch messages and scroll to bottom when they change
@@ -818,23 +874,39 @@ const renameChat = async (id: string, newTitle: string) => {
   }
 }
 
-// Initialize obsidian integration
+// Watch for changes to the Obsidian vault status
 watch(() => obsidian.hasVault.value, (hasVault) => {
-  hasObsidianVault.value = hasVault
-  logger.debug('Obsidian vault detected:', hasVault)
-})
+  console.log('Obsidian vault status changed:', hasVault);
+  console.log('  - Path:', obsidian.vaultPath.value);
+  console.log('  - Path exists:', obsidian.pathExists.value);
+
+  // Synchronize the UI state with the composable state
+  hasObsidianVault.value = hasVault;
+}, { immediate: true })
 
 // Watch for search query changes
 watch(() => searchQuery.value, async (query) => {
   console.log('App.vue - searchQuery changed:', query)
   console.log('App.vue - hasObsidianVault:', obsidian.hasVault.value)
+  console.log('App.vue - Obsidian vault path:', obsidian.vaultPath.value)
 
   if (query && obsidian.hasVault.value) {
     isSearchingFiles.value = true
     console.log('App.vue - Before searchFiles call')
+
+    // Add extra debug logging to trace the search process
+    console.log('DEBUG - About to search files with query:', query)
+    console.log('DEBUG - Current vault path:', obsidian.vaultPath.value)
+    console.log('DEBUG - Is path valid:', !!obsidian.vaultPath.value && obsidian.vaultPath.value.length > 0)
+
+    // Perform the search
     await obsidian.searchFiles(query)
+
+    // Log results for debugging
     console.log('App.vue - After searchFiles call')
     console.log('App.vue - searchResults:', obsidian.searchResults.value)
+    console.log('DEBUG - Search results count:', obsidian.searchResults.value?.length || 0)
+
     obsidianSearchResults.value = obsidian.searchResults.value as ObsidianFile[]
     isSearchingFiles.value = false
     logger.debug('Obsidian search results:', obsidianSearchResults.value.length)
@@ -842,6 +914,34 @@ watch(() => searchQuery.value, async (query) => {
     obsidianSearchResults.value = []
   }
 })
+
+// Watch for Coach Artie availability and select it when it becomes available
+watch(() => coachArtie.isConnected.value, (isConnected) => {
+  if (isConnected) {
+    logger.debug('Coach Artie is now available, selecting it as the current model');
+    aiChat.setModel('coach-artie');
+  }
+})
+
+// Add this method to the script section
+const refreshObsidianVault = async () => {
+  console.log('🔄 Refreshing Obsidian vault path');
+  try {
+    // First, reload the vault path from store
+    await obsidian.loadVaultPath();
+
+    // Update the UI flag - use the computed value instead of path existence
+    hasObsidianVault.value = obsidian.hasVault.value;
+
+    console.log('🔄 Vault refresh complete:');
+    console.log('  - Path:', obsidian.vaultPath.value);
+    console.log('  - Path exists:', obsidian.pathExists.value);
+    console.log('  - Has vault:', obsidian.hasVault.value);
+    console.log('  - UI state:', hasObsidianVault.value);
+  } catch (err) {
+    console.error('🔄 Failed to refresh vault path:', err);
+  }
+};
 </script>
 
 <style scoped>
@@ -1032,5 +1132,14 @@ watch(() => searchQuery.value, async (query) => {
     width: auto;
     max-width: none;
   }
+}
+
+.coach-artie-mode {
+  --coach-artie-accent: rgba(79, 70, 229, 0.1);
+  background-image: linear-gradient(to bottom right, var(--coach-artie-accent), transparent);
+}
+
+.dark .coach-artie-mode {
+  --coach-artie-accent: rgba(79, 70, 229, 0.05);
 }
 </style>

@@ -159,6 +159,11 @@ export interface ObsidianFile {
   preview?: string;
 }
 
+export interface ObsidianSearchOptions {
+  path: string;
+  searchTerm: string;
+}
+
 export interface OpenRouterResponse {
   content: string;
   usage?: {

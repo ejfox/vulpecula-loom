@@ -55,6 +55,9 @@ export interface OpenRouterResponse {
   };
   cost?: number;
   model?: string;
+  thread_id?: number;
+  memories_used?: number;
+  had_capabilities?: boolean;
 }
 
 // Chat Types

@@ -1,8 +1,13 @@
 import { ipcMain, dialog } from "electron";
+import * as fs from "fs";
 import { readdir, readFile, stat } from "fs/promises";
 import { join } from "path";
 import matter from "gray-matter";
 import type { ObsidianFile, ObsidianSearchOptions } from "../../types";
+import ElectronStore from "electron-store";
+
+// Create store instance once and reuse
+const store = new ElectronStore();
 
 // Cache for file metadata to improve performance
 const fileCache = new Map<string, ObsidianFile[]>();
@@ -14,72 +19,56 @@ console.log("🔄 Registering Obsidian handlers...");
 ipcMain.handle(
   "search-obsidian-files",
   async (_, options: ObsidianSearchOptions) => {
-    console.log("📥 Obsidian Handler: Searching files with options:", options);
+    console.log("Obsidian Handler: Searching files with options:", options);
     try {
       if (!options.path) {
-        console.warn("⚠️ Obsidian Handler: No vault path provided");
+        console.warn("Obsidian Handler: No vault path provided");
         return [];
       }
 
-      // Add debug to verify the path exists
-      const fs = require("fs");
-      const pathExists = fs.existsSync(options.path);
-      console.log(
-        `🔍 Obsidian Handler: Path exists: ${pathExists ? "YES" : "NO"} - ${
-          options.path
-        }`
-      );
-
-      if (!pathExists) {
+      // Check if path exists
+      if (!fs.existsSync(options.path)) {
         console.error(
-          "❌ Obsidian Handler: Vault path does not exist:",
+          "Obsidian Handler: Vault path does not exist:",
           options.path
         );
         return [];
       }
 
       console.log(
-        `🔍 Obsidian Handler: Searching for term: "${options.searchTerm}"`
+        `Obsidian Handler: Searching for term: "${options.searchTerm}"`
       );
       const results = await searchObsidianFiles(options);
-      console.log("✅ Obsidian Handler: Found", results.length, "files");
-
-      // Log the first few results for debugging
-      if (results.length > 0) {
-        console.log(
-          "📄 Sample results:",
-          results.slice(0, 3).map((r) => ({
-            title: r.title,
-            path: r.path,
-            preview: r.preview?.slice(0, 30),
-          }))
-        );
-      }
+      console.log("Obsidian Handler: Found", results.length, "files");
 
       return results;
     } catch (err) {
-      console.error(
-        "❌ Obsidian Handler: Error in search-obsidian-files:",
-        err
-      );
+      console.error("Obsidian Handler: Error in search-obsidian-files:", err);
       return [];
     }
   }
 );
 
-// Handler for getting vault path
-ipcMain.handle("get-vault-path", async () => {
-  console.log("📂 Obsidian Handler: Getting vault path");
+/**
+ * Handler to get the Obsidian vault path from the store
+ * Ensures proper error handling and logging
+ */
+const getVaultPathHandler = async () => {
+  const pathKey = "obsidian-vault-path";
+
   try {
-    const store = new (require("electron-store"))();
-    const vaultPath = store.get("obsidian-vault-path");
-    console.log("✅ Obsidian Handler: Got vault path:", vaultPath);
-    return vaultPath;
+    console.log("Getting vault path from store");
+    const path = store.get(pathKey);
+    console.log("Retrieved vault path:", path);
+
+    // Return the path, or empty string if not set
+    return path || "";
   } catch (err) {
-    console.error("❌ Obsidian Handler: Error getting vault path:", err);
-    throw err;
+    console.error("Error getting vault path from store:", err);
+    // Return empty string on error to avoid null/undefined issues
+    return "";
   }
-});
+};
 
 // Handler for folder selection
 ipcMain.handle("select-folder", async () => {
@@ -115,7 +104,90 @@ ipcMain.handle(
 
 console.log("✅ Obsidian handlers registered");
 
+// New diagnostic handlers
+// Handler to check if a path exists
+ipcMain.handle("check-path-exists", async (_, path: string) => {
+  console.log("Checking if path exists:", path);
+  try {
+    if (!path) {
+      console.log("Empty path provided, returning false");
+      return false;
+    }
+
+    return fs.existsSync(path);
+  } catch (err) {
+    console.error("Error checking path:", err);
+    return false;
+  }
+});
+
+// Handler to count markdown files in a directory
+ipcMain.handle("count-markdown-files", async (_, dirPath: string) => {
+  console.log("🔍 Obsidian Diagnostics: Counting markdown files in:", dirPath);
+  try {
+    if (!dirPath) return 0;
+
+    let count = 0;
+
+    async function scanDirForCount(dir: string) {
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        // Skip hidden files and directories
+        if (entry.name.startsWith(".")) continue;
+
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await scanDirForCount(fullPath);
+        } else if (entry.name.endsWith(".md")) {
+          count++;
+        }
+      }
+    }
+
+    await scanDirForCount(dirPath);
+    console.log(`🔍 Obsidian Diagnostics: Found ${count} markdown files`);
+    return count;
+  } catch (err) {
+    console.error("❌ Obsidian Diagnostics: Error counting files:", err);
+    return 0;
+  }
+});
+
+// Handler to refresh the Obsidian cache
+ipcMain.handle("refresh-obsidian-cache", async (_, vaultPath: string) => {
+  console.log("🔄 Obsidian Diagnostics: Refreshing cache for:", vaultPath);
+  try {
+    if (!vaultPath) {
+      throw new Error("No vault path provided");
+    }
+
+    // Clear existing cache
+    fileCache.delete(vaultPath);
+
+    // Rescan files
+    const files = await scanVaultFiles(vaultPath);
+    fileCache.set(vaultPath, files);
+
+    console.log(
+      `✅ Obsidian Diagnostics: Cache refreshed with ${files.length} files`
+    );
+    return { success: true, fileCount: files.length };
+  } catch (err) {
+    console.error("❌ Obsidian Diagnostics: Error refreshing cache:", err);
+    throw err;
+  }
+});
+
 async function scanVaultFiles(vaultPath: string): Promise<ObsidianFile[]> {
+  console.log(`Scanning vault files at path: ${vaultPath}`);
+
+  // Check if path exists
+  if (!fs.existsSync(vaultPath)) {
+    console.error(`Cannot scan nonexistent vault path: ${vaultPath}`);
+    return [];
+  }
+
   const files: ObsidianFile[] = [];
 
   async function scanDir(dirPath: string) {
@@ -151,7 +223,7 @@ async function scanVaultFiles(vaultPath: string): Promise<ObsidianFile[]> {
               lastModified: stats.mtimeMs,
               preview: preview ? String(preview.slice(0, 100)) : undefined,
               slug: String(entry.name.replace(".md", "")),
-            });
+            } as ObsidianFile);
           } catch (err) {
             console.error(`Error processing ${fullPath}:`, err);
           }
@@ -163,6 +235,7 @@ async function scanVaultFiles(vaultPath: string): Promise<ObsidianFile[]> {
   }
 
   await scanDir(vaultPath);
+  console.log(`Scan complete. Found ${files.length} markdown files in vault.`);
   return files;
 }
 
@@ -171,6 +244,7 @@ async function searchObsidianFiles(
 ): Promise<ObsidianFile[]> {
   try {
     const { path: vaultPath, searchTerm } = options;
+    console.log("Searching Obsidian files:", { vaultPath, searchTerm });
 
     // Validate inputs
     if (
@@ -179,12 +253,15 @@ async function searchObsidianFiles(
       !searchTerm ||
       typeof searchTerm !== "string"
     ) {
+      console.log("Invalid input parameters");
       return [];
     }
 
     // Get or update cache
     if (!fileCache.has(vaultPath)) {
+      console.log("Cache not found, scanning vault files...");
       const files = await scanVaultFiles(vaultPath);
+      console.log(`Found ${files.length} files in vault`);
       fileCache.set(vaultPath, files);
 
       // Set up file watcher to invalidate cache when files change
@@ -197,13 +274,18 @@ async function searchObsidianFiles(
     }
 
     const files = fileCache.get(vaultPath) || [];
+
     const searchTerms = searchTerm.toLowerCase().split(" ");
 
-    return files
-      .filter((file) => {
-        const searchText = `${file.title} ${file.preview || ""}`.toLowerCase();
-        return searchTerms.every((term) => searchText.includes(term));
-      })
+    // Filter and sort files
+    const matchedFiles = files.filter((file) => {
+      const searchText = `${file.title} ${file.preview || ""}`.toLowerCase();
+      const matches = searchTerms.every((term) => searchText.includes(term));
+      return matches;
+    });
+
+    // Sort matches
+    const sortedResults = matchedFiles
       .sort((a, b) => {
         // Prioritize matches in title
         const aInTitle = a.title
@@ -217,8 +299,49 @@ async function searchObsidianFiles(
         return 0;
       })
       .slice(0, 10); // Limit results
+
+    console.log(`Returning ${sortedResults.length} results`);
+    return sortedResults;
   } catch (err) {
     console.error("Error searching Obsidian files:", err);
     return [];
   }
 }
+
+// Register all handlers
+export function registerObsidianHandlers() {
+  console.log("Registering Obsidian IPC handlers");
+
+  // Register get-vault-path handler
+  ipcMain.handle("get-vault-path", getVaultPathHandler);
+
+  // Register search handler
+  ipcMain.handle(
+    "search-obsidian-files",
+    (event, options: ObsidianSearchOptions) => {
+      return searchObsidianFiles(options);
+    }
+  );
+
+  // Register path check handler
+  ipcMain.handle("check-path-exists", (event, path: string) => {
+    return fs.existsSync(path);
+  });
+
+  // Register folder selection handler
+  ipcMain.handle("select-folder", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+    });
+    return result;
+  });
+
+  console.log("All Obsidian IPC handlers registered");
+}
+
+// Self-executing function to register handlers immediately
+// This ensures handlers are registered even if the module is just imported
+(function () {
+  console.log("Auto-registering Obsidian IPC handlers");
+  registerObsidianHandlers();
+})();

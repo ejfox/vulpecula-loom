@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import type { StatusBarProps } from '../types'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 interface Props {
   command: (...args: any[]) => void;
@@ -16,6 +15,9 @@ const commandInput = ref('')
 const commandHistory = ref<string[]>([])
 const historyIndex = ref(-1)
 
+// Check if current model is Coach Artie
+const isCoachArtieMode = computed(() => props.modelName === 'coach-artie')
+
 // Available commands and their descriptions
 const commands = {
   'new': 'Create a new chat',
@@ -27,7 +29,7 @@ const commands = {
   'quit': 'Close current chat'
 } as const
 
-const handleKeydown = (e: KeyboardEvent) => {
+const handleCommandKeydown = (e: KeyboardEvent) => {
   // Enter command mode with ':'
   if (e.key === ':' && !isCommandMode.value) {
     e.preventDefault()
@@ -81,52 +83,69 @@ const executeCommand = (cmd: string) => {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('keydown', handleCommandKeydown)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('keydown', handleCommandKeydown)
 })
 </script>
 
 <template>
-  <footer class="flex-shrink-0 h-6 bg-gray-900 dark:bg-gray-950 border-t border-gray-800 dark:border-gray-800/50 
-           text-gray-400 dark:text-gray-500 text-xs flex items-center px-2 gap-3 
-           group hover:bg-gray-800 dark:hover:bg-gray-900 transition-colors">
-    <!-- Command input -->
-    <div v-if="isCommandMode" class="flex-1 flex items-center">
-      <span class="text-yellow-500 dark:text-yellow-400">:</span>
+  <footer class="status-bar flex-shrink-0 h-6 bg-gray-900 dark:bg-gray-950 border-t border-gray-800 dark:border-gray-800/50 
+            text-gray-400 dark:text-gray-500 text-xs flex items-center px-2 gap-3 
+            group hover:bg-gray-800 dark:hover:bg-gray-900 transition-colors"
+    :class="{ 'coach-artie-mode': isCoachArtieMode }">
+    <!-- Command Mode Input -->
+    <div v-if="isCommandMode" class="command-input flex-1 flex items-center">
+      <span class="command-prompt text-yellow-500 dark:text-yellow-400">:</span>
       <input ref="commandInput" v-model="commandInput" type="text"
-        class="flex-1 bg-transparent border-none outline-none px-1 text-white dark:text-gray-200 focus:ring-0"
-        placeholder="Type a command..." />
+        class="command-field flex-1 bg-transparent border-none outline-none px-1 text-white dark:text-gray-200 focus:ring-0"
+        @keydown="handleCommandKeydown" placeholder="Type a command..." />
     </div>
 
-    <!-- Normal status display -->
+    <!-- Status Information -->
     <template v-else>
       <!-- Left side status items -->
       <div class="flex items-center gap-3">
-        <!-- Connection status -->
-        <div class="flex items-center gap-1.5">
-          <div class="w-2 h-2 rounded-full transition-colors"
-            :class="isConnected ? 'bg-green-500 dark:bg-green-600' : 'bg-red-500 dark:bg-red-600'" />
-          <span class="transition-opacity hover:text-gray-300 dark:hover:text-gray-400">
-            {{ isConnected ? 'Connected' : 'Disconnected' }}
+        <!-- Connection Status -->
+        <div class="connection-status flex items-center gap-1.5">
+          <div class="status-dot w-2 h-2 rounded-full transition-colors"
+            :class="props.isConnected ? 'bg-green-500 dark:bg-green-600 connected' : 'bg-red-500 dark:bg-red-600'" />
+          <span v-if="isCoachArtieMode"
+            class="model-name transition-opacity hover:text-gray-300 dark:hover:text-gray-400">
+            🤖 Coach Artie
           </span>
-        </div>
-
-        <!-- Model name -->
-        <div v-if="modelName" class="flex items-center gap-1">
-          <span class="text-gray-500 dark:text-gray-600">Model:</span>
-          <span class="hover:text-gray-300 dark:hover:text-gray-400 transition-colors">
-            {{ modelName.split('/').pop() }}
+          <span v-else class="model-name transition-opacity hover:text-gray-300 dark:hover:text-gray-400">
+            {{ props.modelName?.split('/').pop() }}
           </span>
         </div>
       </div>
 
-      <!-- Right side status items -->
-      <div class="flex-1 flex items-center justify-end gap-3">
+      <!-- Right side help text -->
+      <div class="ml-auto">
         <span class="text-gray-600 dark:text-gray-500">Press : for commands</span>
       </div>
     </template>
   </footer>
 </template>
+
+<style scoped>
+/* Coach Artie Mode Styles */
+.coach-artie-mode {
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.1), transparent);
+}
+
+.coach-artie-mode .model-name {
+  color: rgb(79, 70, 229);
+  font-weight: 500;
+}
+
+.dark .coach-artie-mode {
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.2), transparent 50%);
+}
+
+.dark .coach-artie-mode .model-name {
+  color: rgb(129, 140, 248);
+}
+</style>

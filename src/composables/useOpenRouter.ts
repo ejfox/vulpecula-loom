@@ -584,6 +584,34 @@ export function useOpenRouter(): UseOpenRouterReturn {
     // Implementation
   }
 
+  // Add a rate limiter for summary generation
+  const summaryRateLimiter = {
+    lastSummaryTime: 0,
+    minIntervalMs: 2000, // Minimum 2 seconds between summary requests
+    isRateLimited: function () {
+      const now = Date.now();
+      const timeSinceLastSummary = now - this.lastSummaryTime;
+      return timeSinceLastSummary < this.minIntervalMs;
+    },
+    updateLastSummaryTime: function () {
+      this.lastSummaryTime = Date.now();
+    },
+  };
+
+  // Add a rate limiter for title generation
+  const titleRateLimiter = {
+    lastTitleTime: 0,
+    minIntervalMs: 3000, // Minimum 3 seconds between title generation requests
+    isRateLimited: function () {
+      const now = Date.now();
+      const timeSinceLastTitle = now - this.lastTitleTime;
+      return timeSinceLastTitle < this.minIntervalMs;
+    },
+    updateLastTitleTime: function () {
+      this.lastTitleTime = Date.now();
+    },
+  };
+
   /**
    * Generate a summary of a chat using the Gemini model
    * @param messages The messages to summarize
@@ -601,7 +629,19 @@ export function useOpenRouter(): UseOpenRouterReturn {
       return "Empty chat";
     }
 
+    // Check rate limiting
+    if (summaryRateLimiter.isRateLimited()) {
+      logger.debug("Summary generation rate limited, waiting...");
+      // Wait for the rate limit to expire
+      await new Promise((resolve) =>
+        setTimeout(resolve, summaryRateLimiter.minIntervalMs)
+      );
+    }
+
     try {
+      // Update rate limiter
+      summaryRateLimiter.updateLastSummaryTime();
+
       // Create a prompt for summarization
       const summaryPrompt = `
         Please create a very brief single-sentence summary (max 80 characters) of this conversation.
