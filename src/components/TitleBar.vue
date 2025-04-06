@@ -230,8 +230,8 @@ const formatNumber = (num: number): string => {
       </span>
     </div>
 
-    <!-- Model Selector -->
-    <div class="relative mx-auto">
+    <!-- Model Selector with Token Count -->
+    <div class="relative mx-auto flex items-center">
       <select :value="currentModel" @change="handleModelChange" class="appearance-none bg-transparent border border-macos-gray-200 dark:border-ayu-dark-line 
                rounded-md px-3 py-1 text-xs focus:ring-1 focus:ring-macos-blue focus:border-macos-blue
                text-macos-gray-900 dark:text-ayu-dark-editor-fg focus:outline-none">
