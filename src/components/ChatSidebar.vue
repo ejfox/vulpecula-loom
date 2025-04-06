@@ -155,7 +155,7 @@
                     <div v-if="activeDropdown === chat.id"
                       class="absolute right-0 mt-1 w-40 bg-white dark:bg-oled-black rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-50 text-xs">
                       <div class="py-1">
-                        <button @click.stop="regenerateSummary(chat)"
+                        <button @click.stop.prevent="regenerateSummary(chat)"
                           class="w-full px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900 text-left flex items-center">
                           <svg class="w-3.5 h-3.5 mr-1.5 text-gray-500 dark:text-gray-400" fill="none"
                             viewBox="0 0 24 24" stroke="currentColor">
@@ -509,16 +509,30 @@ const regenerateSummary = async (chat: Chat) => {
 
   if (summaryLoadingIds.value.has(chat.id)) return
 
+  // Close the dropdown menu first to prevent UI issues
+  activeDropdown.value = null;
+  
+  // Reset any failed attempts for this chat
+  failedSummaryAttempts.delete(chat.id);
+
   // Update the throttle timestamp
   lastSummaryApiCallTime = Date.now();
   
+  // Set loading state
   summaryLoadingIds.value.add(chat.id)
+  
   try {
+    // Clear existing summary while loading
+    chatSummaries.value[chat.id] = '';
+    
+    // Generate new summary
     const summary = await openRouter.generateChatSummary(chat.messages)
+    
     if (summary) {
+      // Update in-memory summary
       chatSummaries.value[chat.id] = summary
 
-      // Update the chat object to prevent future regeneration
+      // Update the chat object
       chat.metadata.summary = summary
       chat.metadata.summaryLastUpdated = new Date().toISOString()
 
@@ -556,9 +570,19 @@ const regenerateSummary = async (chat: Chat) => {
         logger.error('Failed to save summary to store', { chatId: chat.id, error: storeError })
         // Still keep the summary in memory even if storage fails
       }
+    } else {
+      logger.warn('No summary generated during regeneration', { chatId: chat.id })
+      // Restore previous summary if available
+      if (chat.metadata.summary) {
+        chatSummaries.value[chat.id] = chat.metadata.summary;
+      }
     }
   } catch (error) {
     logger.error('Failed to regenerate summary', { chatId: chat.id, error })
+    // Restore previous summary if available
+    if (chat.metadata.summary) {
+      chatSummaries.value[chat.id] = chat.metadata.summary;
+    }
   } finally {
     summaryLoadingIds.value.delete(chat.id)
   }
