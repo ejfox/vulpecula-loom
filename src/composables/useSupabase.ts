@@ -80,11 +80,41 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
+      // Calculate message count
+      const messageCount = history.messages.length;
+      
+      // Calculate token stats
+      let promptTokens = 0;
+      let completionTokens = 0;
+      
+      // Sum up tokens from all messages
+      history.messages.forEach(msg => {
+        if (msg.tokens) {
+          promptTokens += msg.tokens.prompt || 0;
+          completionTokens += msg.tokens.completion || 0;
+        }
+      });
+      
+      // Ensure metadata has stats
+      const metadata = {
+        ...(history.metadata || {}),
+        messageCount,
+        lastUpdated: new Date().toISOString(),
+        stats: {
+          ...(history.metadata?.stats || {}),
+          promptTokens,
+          completionTokens,
+          totalMessages: messageCount,
+          total: promptTokens + completionTokens
+        }
+      };
+
       const { data, error } = await supabase
         .from("vulpeculachats")
         .insert([
           {
             ...history,
+            metadata,
             user_id: userId.value,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -110,11 +140,40 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
+      // Calculate accurate message count
+      const messageCount = messages.length;
+      
+      // Calculate token stats
+      let promptTokens = 0;
+      let completionTokens = 0;
+      
+      // Sum up tokens from all messages
+      messages.forEach(msg => {
+        if (msg.tokens) {
+          promptTokens += msg.tokens.prompt || 0;
+          completionTokens += msg.tokens.completion || 0;
+        }
+      });
+      
+      // Prepare updated metadata
+      const updatedMetadata = {
+        ...(metadata || {}),
+        messageCount,
+        lastUpdated: new Date().toISOString(),
+        stats: {
+          ...(metadata?.stats || {}),
+          promptTokens,
+          completionTokens,
+          totalMessages: messageCount,
+          total: promptTokens + completionTokens
+        }
+      };
+
       const { data, error } = await supabase
         .from("vulpeculachats")
         .update({
           messages,
-          metadata: metadata || {},
+          metadata: updatedMetadata,
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -199,10 +258,53 @@ export function useSupabase() {
     try {
       if (!userId.value) throw new Error("User not authenticated");
 
+      // First get the current chat to preserve existing metadata
+      const { data: currentChat, error: fetchError } = await supabase
+        .from("vulpeculachats")
+        .select("metadata, messages")
+        .eq("id", chatId)
+        .eq("user_id", userId.value)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Calculate message count from messages
+      const messageCount = currentChat.messages.length;
+      
+      // Calculate token stats if not already in metadata
+      let promptTokens = currentChat.metadata?.stats?.promptTokens || 0;
+      let completionTokens = currentChat.metadata?.stats?.completionTokens || 0;
+      
+      // If we don't have token stats, calculate them from messages
+      if (promptTokens === 0 && completionTokens === 0) {
+        currentChat.messages.forEach(msg => {
+          if (msg.tokens) {
+            promptTokens += msg.tokens.prompt || 0;
+            completionTokens += msg.tokens.completion || 0;
+          }
+        });
+      }
+      
+      // Merge existing metadata with new metadata
+      const updatedMetadata = {
+        ...currentChat.metadata,
+        ...metadata,
+        messageCount: messageCount,
+        lastUpdated: new Date().toISOString(),
+        stats: {
+          ...(currentChat.metadata?.stats || {}),
+          ...(metadata.stats || {}),
+          promptTokens,
+          completionTokens,
+          totalMessages: messageCount,
+          total: promptTokens + completionTokens
+        }
+      };
+
       const { data, error } = await supabase
         .from("vulpeculachats")
         .update({
-          metadata: metadata,
+          metadata: updatedMetadata,
           updated_at: new Date().toISOString(),
         })
         .eq("id", chatId)
