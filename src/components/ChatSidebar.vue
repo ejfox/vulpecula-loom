@@ -409,6 +409,13 @@ const generateSummaryForChat = async (chat: Chat) => {
     return;
   }
   
+  // Check if we've already failed to generate a summary for this chat multiple times
+  const failCount = failedSummaryAttempts.get(chat.id) || 0;
+  if (failCount >= MAX_SUMMARY_RETRIES) {
+    logger.debug(`Skipping generateSummaryForChat for chat ${chat.id} - exceeded retry limit (${failCount}/${MAX_SUMMARY_RETRIES})`);
+    return;
+  }
+  
   // Skip if already has a recent summary (less than 24 hours old)
   const lastSummaryTime = chat.metadata.summaryLastUpdated ? new Date(chat.metadata.summaryLastUpdated).getTime() : 0
   const isRecent = lastSummaryTime > Date.now() - 24 * 60 * 60 * 1000
@@ -435,6 +442,9 @@ const generateSummaryForChat = async (chat: Chat) => {
     const summary = await openRouter.generateChatSummary(chat.messages)
 
     if (summary) {
+      // Reset failed attempts counter on success
+      failedSummaryAttempts.delete(chat.id);
+      
       chatSummaries.value[chat.id] = summary
 
       // Store summary in chat metadata for persistence
@@ -475,9 +485,15 @@ const generateSummaryForChat = async (chat: Chat) => {
         logger.error('Failed to save summary to store', { chatId: chat.id, error: storeError })
         // Still keep the summary in memory even if storage fails
       }
+    } else {
+      // Increment failed attempts if no summary was returned
+      failedSummaryAttempts.set(chat.id, failCount + 1);
+      logger.warn(`No summary generated for chat ${chat.id}, attempt ${failCount + 1}/${MAX_SUMMARY_RETRIES}`);
     }
   } catch (error) {
-    logger.error('Failed to generate summary', { chatId: chat.id, error })
+    // Increment failed attempts counter
+    failedSummaryAttempts.set(chat.id, failCount + 1);
+    logger.error('Failed to generate summary', { chatId: chat.id, error, attempt: failCount + 1, maxRetries: MAX_SUMMARY_RETRIES })
   } finally {
     summaryLoadingIds.value.delete(chat.id)
   }
@@ -556,7 +572,10 @@ const generateAllSummaries = async () => {
     return;
   }
 
-  if (isGeneratingSummaries.value) return
+  if (isGeneratingSummaries.value) {
+    logger.debug('Already generating summaries, skipping duplicate call');
+    return;
+  }
 
   isGeneratingSummaries.value = true
   try {
@@ -567,6 +586,11 @@ const generateAllSummaries = async () => {
     const store = useStore()
     for (const chat of props.chatHistory) {
       try {
+        // Skip if we already have this summary in memory
+        if (chatSummaries.value[chat.id]) {
+          continue;
+        }
+        
         // Wrap store.get in a try-catch to handle any JSON parsing errors
         let storedSummary = null
         try {
@@ -586,19 +610,44 @@ const generateAllSummaries = async () => {
       }
     }
 
-    // Generate missing summaries (limit to 3 at a time to prevent token overuse)
+    // Generate missing summaries (limit to 2 at a time to prevent token overuse)
     const chatsNeedingSummaries = props.chatHistory.filter(
-      chat => !chatSummaries.value[chat.id] && chat.messages.length > 1 &&
-      // Only include chats that don't have a recent summary in their metadata
-      (!chat.metadata.summary || !chat.metadata.summaryLastUpdated || 
-       new Date(chat.metadata.summaryLastUpdated).getTime() < Date.now() - 24 * 60 * 60 * 1000)
-    ).slice(0, 3) // Limit to 3 chats at a time
+      chat => {
+        // Skip chats that already have summaries in memory
+        if (chatSummaries.value[chat.id]) return false;
+        
+        // Skip chats with too few messages
+        if (chat.messages.length <= 1) return false;
+        
+        // Skip chats that have exceeded retry attempts
+        const failCount = failedSummaryAttempts.get(chat.id) || 0;
+        if (failCount >= MAX_SUMMARY_RETRIES) return false;
+        
+        // Skip chats that have recent summaries in their metadata
+        if (chat.metadata.summary && chat.metadata.summaryLastUpdated) {
+          const lastUpdateTime = new Date(chat.metadata.summaryLastUpdated).getTime();
+          if (lastUpdateTime > Date.now() - 24 * 60 * 60 * 1000) {
+            // If it has a recent summary in metadata but not in our memory cache, add it
+            chatSummaries.value[chat.id] = chat.metadata.summary;
+            return false;
+          }
+        }
+        
+        return true;
+      }
+    ).slice(0, 2) // Limit to 2 chats at a time to reduce API load
 
     if (chatsNeedingSummaries.length > 0) {
-      logger.debug(`Generating summaries for ${chatsNeedingSummaries.length} chats`)
-      await Promise.all(
-        chatsNeedingSummaries.map(chat => generateSummaryForChat(chat))
-      )
+      logger.debug(`Generating summaries for ${chatsNeedingSummaries.length} chats`);
+      
+      // Process sequentially instead of in parallel to avoid rate limits
+      for (const chat of chatsNeedingSummaries) {
+        await generateSummaryForChat(chat);
+        // Add a small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } else {
+      logger.debug('No chats need summaries at this time');
     }
   } catch (error) {
     logger.error('Failed to generate summaries', error)
@@ -729,15 +778,28 @@ onMounted(() => {
   // Preload Monaspace font
   preloadFont();
 
-  // Generate summaries for visible chats
-  console.log('ChatSidebar mounted - attempting to generate summaries');
-  generateAllSummaries();
+  // Generate summaries for visible chats - with a slight delay to ensure component is fully mounted
+  console.log('ChatSidebar mounted - scheduling summary generation');
+  setTimeout(() => {
+    if (!isGeneratingSummaries.value) {
+      generateAllSummaries();
+    }
+  }, 1000);
 
-  // Check for chats that need titles
-  console.log('Checking for auto titles for', props.chatHistory.length, 'chats');
-  props.chatHistory.forEach(chat => {
-    checkForAutoTitle(chat);
-  });
+  // Check for chats that need titles - with a slight delay to avoid competing with summary generation
+  console.log('Scheduling auto title check for', props.chatHistory.length, 'chats');
+  setTimeout(() => {
+    // Only check one chat at a time to prevent excessive API calls
+    const chatNeedingTitle = props.chatHistory.find(chat => {
+      const defaultTitles = ['new chat', 'untitled chat', 'untitled', '']
+      const hasDefaultTitle = !chat.title || defaultTitles.includes(chat.title.toLowerCase())
+      return chat.messages.length >= 5 && hasDefaultTitle
+    });
+    
+    if (chatNeedingTitle) {
+      checkForAutoTitle(chatNeedingTitle);
+    }
+  }, 3000);
 
   // Create a mutation observer to track when chat items are added or removed
   const observer = new MutationObserver(() => {
@@ -804,10 +866,12 @@ onMounted(() => {
   })
 })
 
-// Add simple throttling variables to prevent excessive API calls
+// Add robust throttling variables to prevent excessive API calls
 let lastSummaryApiCallTime = Date.now() - 10000; // Initialize to 10 seconds ago
 let lastTitleApiCallTime = Date.now() - 10000; // Initialize to 10 seconds ago
-const MIN_API_CALL_INTERVAL = 3000; // 3 seconds minimum between API calls
+const MIN_API_CALL_INTERVAL = 5000; // 5 seconds minimum between API calls
+const MAX_SUMMARY_RETRIES = 2; // Maximum number of retries for failed summaries
+const failedSummaryAttempts = new Map(); // Track failed summary generation attempts
 
 // Watch for changes in chat history to update summaries and titles
 watch(() => props.chatHistory, async (newHistory, oldHistory) => {
@@ -818,18 +882,43 @@ watch(() => props.chatHistory, async (newHistory, oldHistory) => {
     return;
   }
 
+  // Skip if we're already generating summaries
+  if (isGeneratingSummaries.value) {
+    logger.debug('Already generating summaries, skipping watch handler');
+    return;
+  }
+
   if (newHistory.length !== oldHistory?.length) {
     // Check if there are any chats without summaries
     const unsummarizedChats = newHistory.filter(
-      chat => !chatSummaries.value[chat.id] && chat.messages.length > 1 && 
-      // Only include chats that don't have a recent summary in their metadata
-      (!chat.metadata.summary || !chat.metadata.summaryLastUpdated || 
-       new Date(chat.metadata.summaryLastUpdated).getTime() < Date.now() - 24 * 60 * 60 * 1000)
+      chat => {
+        // Skip chats that already have summaries in memory
+        if (chatSummaries.value[chat.id]) return false;
+        
+        // Skip chats with too few messages
+        if (chat.messages.length <= 1) return false;
+        
+        // Skip chats that have exceeded retry attempts
+        const failCount = failedSummaryAttempts.get(chat.id) || 0;
+        if (failCount >= MAX_SUMMARY_RETRIES) return false;
+        
+        // Skip chats that have recent summaries in their metadata
+        if (chat.metadata.summary && chat.metadata.summaryLastUpdated) {
+          const lastUpdateTime = new Date(chat.metadata.summaryLastUpdated).getTime();
+          if (lastUpdateTime > Date.now() - 24 * 60 * 60 * 1000) {
+            // If it has a recent summary in metadata but not in our memory cache, add it
+            chatSummaries.value[chat.id] = chat.metadata.summary;
+            return false;
+          }
+        }
+        
+        return true;
+      }
     )
 
     if (unsummarizedChats.length > 0) {
-      // Limit to max 3 summaries per update to prevent token overuse
-      const limitedChats = unsummarizedChats.slice(0, 3)
+      // Limit to max 2 summaries per update to prevent token overuse
+      const limitedChats = unsummarizedChats.slice(0, 2)
       logger.debug(`Generating summaries for ${limitedChats.length} chats out of ${unsummarizedChats.length} unsummarized`)
       
       // Update the throttle timestamp
@@ -839,6 +928,8 @@ watch(() => props.chatHistory, async (newHistory, oldHistory) => {
       // This prevents the function from checking all chats again
       for (const chat of limitedChats) {
         await generateSummaryForChat(chat)
+        // Add a small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
@@ -1115,10 +1206,14 @@ const formatDate = (dateString: string | undefined) => {
 const confirmDelete = (chatId: string) => {
   // This could be enhanced with a modal confirmation
   if (confirm('Are you sure you want to delete this chat?')) {
-    emit('delete-chat', chatId)
-    // Close any open dropdowns after deletion
+    // Close any open dropdowns before deletion to prevent UI state issues
     activeDropdown.value = null
     activeModelsDropdown.value = null
+    
+    // Small delay to ensure UI updates before deletion
+    setTimeout(() => {
+      emit('delete-chat', chatId)
+    }, 50)
   }
 }
 
