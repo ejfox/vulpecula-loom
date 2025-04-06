@@ -36,6 +36,14 @@ const props = defineProps({
   availableModels: {
     type: Array as () => OpenRouterModel[],
     default: () => []
+  },
+  tokenCount: {
+    type: Object,
+    default: () => ({
+      prompt: 0,
+      completion: 0,
+      total: 0
+    })
   }
 })
 
@@ -190,6 +198,18 @@ const toggleDebugConsole = () => {
 const toggleUserMenu = () => {
   isUserMenuOpen.value = !isUserMenuOpen.value
 }
+
+// Format number with compact notation
+const formatNumber = (num: number): string => {
+  if (num === 0) return '0';
+  
+  if (num < 1000) return num.toString();
+  
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(num);
+}
 </script>
 
 <template>
@@ -255,6 +275,12 @@ const toggleUserMenu = () => {
           <path
             d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
         </svg>
+      </div>
+      
+      <!-- Token Counter -->
+      <div v-if="tokenCount.total > 0" class="ml-2 text-xs flex items-center space-x-1 bg-gray-100 dark:bg-ayu-dark-line px-2 py-0.5 rounded">
+        <span class="font-mono text-gray-600 dark:text-gray-300">{{ formatNumber(tokenCount.total) }}</span>
+        <span class="text-gray-400 dark:text-gray-500">tokens</span>
       </div>
     </div>
 
