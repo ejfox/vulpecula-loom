@@ -164,7 +164,7 @@
                           </svg>
                           Regenerate Summary
                         </button>
-                        <button @click.stop="confirmDelete(chat.id)"
+                        <button @click.stop.prevent="confirmDelete(chat.id)"
                           class="w-full px-3 py-1.5 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-900 text-left flex items-center">
                           <svg class="w-3.5 h-3.5 mr-1.5 text-red-500 dark:text-red-400" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
@@ -1116,6 +1116,9 @@ const confirmDelete = (chatId: string) => {
   // This could be enhanced with a modal confirmation
   if (confirm('Are you sure you want to delete this chat?')) {
     emit('delete-chat', chatId)
+    // Close any open dropdowns after deletion
+    activeDropdown.value = null
+    activeModelsDropdown.value = null
   }
 }
 
