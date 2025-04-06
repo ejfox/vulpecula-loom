@@ -194,12 +194,7 @@ const toggleUserMenu = () => {
 
 <template>
   <header class="title-bar drag-handle">
-    <!-- macOS window controls -->
-    <div class="flex space-x-2 mr-4 self-center">
-      <button class="w-3 h-3 rounded-full bg-red-500 hover:brightness-110" @click="electronWindow.close()" />
-      <button class="w-3 h-3 rounded-full bg-yellow-500 hover:brightness-110" @click="electronWindow.minimize()" />
-      <button class="w-3 h-3 rounded-full bg-green-500 hover:brightness-110" @click="electronWindow.maximize()" />
-    </div>
+    <!-- Window title only - no controls (they're in the sidebar) -->
 
     <!-- Title -->
     <h1 class="text-center font-semibold text-sm text-macos-gray-900 dark:text-ayu-dark-editor-fg">

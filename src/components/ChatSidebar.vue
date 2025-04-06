@@ -4,9 +4,22 @@
     <div class="celestial-header-simple px-4 py-3 border-b border-gray-200 dark:border-gray-800 app-drag-region"
       :class="{ 'celestial-header-thinking': isGeneratingSummaries || isAiResponding }">
       <div class="flex items-center justify-between relative z-10">
-        <h1 class="font-medium text-white dark:text-white select-none">
-          Vulpecula
-        </h1>
+        <!-- Window controls -->
+        <div class="flex space-x-2 self-center">
+          <button class="w-3 h-3 rounded-full bg-red-500 hover:brightness-110" 
+            @click="windowControls.close()" />
+          <button class="w-3 h-3 rounded-full bg-yellow-500 hover:brightness-110" 
+            @click="windowControls.minimize()" />
+          <button class="w-3 h-3 rounded-full bg-green-500 hover:brightness-110" 
+            @click="windowControls.maximize()" />
+        </div>
+        
+        <div class="flex items-center">
+          <h1 class="font-medium text-white dark:text-white select-none ml-2">
+            Vulpecula
+          </h1>
+        </div>
+        
         <img src="https://room302.studio/room302-logo.svg" alt="Room 302 Studio"
           class="h-5 logo-monochrome select-none" />
       </div>
@@ -299,6 +312,25 @@ const props = defineProps<{
   currentChatId: string | null
   isAiResponding?: boolean // New prop to track when AI is actively responding
 }>()
+
+// Window control functions
+const windowControls = {
+  close: () => {
+    if (typeof window !== 'undefined' && window.electron) {
+      window.electron.ipc.invoke('window-close')
+    }
+  },
+  minimize: () => {
+    if (typeof window !== 'undefined' && window.electron) {
+      window.electron.ipc.invoke('window-minimize')
+    }
+  },
+  maximize: () => {
+    if (typeof window !== 'undefined' && window.electron) {
+      window.electron.ipc.invoke('window-maximize')
+    }
+  }
+}
 
 const emit = defineEmits(['new-chat', 'load-chat', 'delete-chat', 'rename-chat'])
 
