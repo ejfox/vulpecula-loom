@@ -178,7 +178,7 @@ import logger from './lib/logger'
 // Core application state and composables
 // =========================================
 const { isAuthenticated, user } = useActiveUser()
-const { loadChatHistories, saveChatHistory, deleteAllChats } = useSupabase()
+const { loadChatHistories, saveChatHistory, deleteChat } = useSupabase()
 const { isDark, systemPrefersDark } = useTheme()
 const aiChat = useAIChat()
 const openRouter = useOpenRouter()
@@ -520,8 +520,24 @@ const setModel = (modelId: string) => {
 }
 
 const handleDeleteChat = async (id: string) => {
-  // TODO: Implement chat deletion
-  logger.debug('Delete chat requested for:', id)
+  try {
+    logger.debug('Deleting chat:', id)
+    
+    // Delete from Supabase
+    await deleteChat(id)
+    
+    // If we deleted the current chat, create a new one
+    if (currentChatId.value === id) {
+      await createNewChat()
+    }
+    
+    // Update local chat history
+    await syncChatHistory()
+    
+    logger.debug('Chat deleted successfully')
+  } catch (error) {
+    logger.error('Failed to delete chat:', error)
+  }
 }
 
 const exportChat = () => {
@@ -549,7 +565,7 @@ const confirmClearChatHistory = async () => {
     const newChat = await createNewChat()
 
     // Delete all chat history from Supabase
-    await deleteAllChats()
+    await deleteChat(newChat.id)
 
     // Clear local chat history
     chatHistory.value = [newChat]
