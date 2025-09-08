@@ -50,7 +50,7 @@
     "@electron-toolkit/preload": "^3.0.1",
     "@iconify/json": "^2.2.282",
     "@iconify/vue": "^4.2.0",
-    "@supabase/supabase-js": "^2.46.1",
+    "better-auth": "^1.0.1",
     "@tailwindcss/typography": "^0.5.15",
     "@types/dompurify": "^3.2.0",
     "@types/path-browserify": "^1.0.3",
